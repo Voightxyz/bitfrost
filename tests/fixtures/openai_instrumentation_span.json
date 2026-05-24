@@ -1,0 +1,64 @@
+{
+  "library": "opentelemetry-instrumentation-openai",
+  "library_version": "0.50.1",
+  "openai_sdk_version": "2.38.0",
+  "model_called": "gpt-4o-mini",
+  "spans_count": 1,
+  "spans": [
+    {
+      "name": "openai.chat",
+      "kind": "SpanKind.CLIENT",
+      "status": {
+        "status_code": "StatusCode.UNSET",
+        "description": null
+      },
+      "start_time_ns": 1779577706577991000,
+      "end_time_ns": 1779577708353368000,
+      "duration_ns": 1775377000,
+      "attributes": {
+        "llm.request.type": "chat",
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-4o-mini",
+        "gen_ai.request.max_tokens": 10,
+        "llm.headers": "None",
+        "llm.is_streaming": false,
+        "gen_ai.openai.api_base": "https://api.openai.com/v1/",
+        "gen_ai.prompt.0.role": "user",
+        "gen_ai.prompt.0.content": "Reply with exactly: pong",
+        "llm.request.reasoning_effort": [],
+        "gen_ai.response.model": "gpt-4o-mini-2024-07-18",
+        "gen_ai.response.id": "chatcmpl-DipkCFYfedfftqJOMH3q8CkANsrUb",
+        "gen_ai.openai.system_fingerprint": "fp_2767f2907f",
+        "openai.response.service_tier": "default",
+        "llm.usage.total_tokens": 13,
+        "gen_ai.usage.output_tokens": 1,
+        "gen_ai.usage.input_tokens": 12,
+        "gen_ai.usage.cache_read_input_tokens": 0,
+        "llm.usage.reasoning_tokens": 0,
+        "gen_ai.completion.0.finish_reason": "stop",
+        "gen_ai.completion.0.role": "assistant",
+        "gen_ai.completion.0.content": "pong"
+      },
+      "events": [],
+      "links": [],
+      "resource_attributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.41.1",
+        "service.name": "unknown_service"
+      },
+      "instrumentation_scope": {
+        "name": "opentelemetry.instrumentation.openai.v1",
+        "version": "0.50.1"
+      },
+      "context": {
+        "trace_id_hex": "0c5494b9cd3d09cac67d86e77efd78ac",
+        "span_id_hex": "bbcf00b5ad45d11c"
+      },
+      "parent": null,
+      "dropped_attributes_count": 0,
+      "dropped_events_count": 0,
+      "dropped_links_count": 0
+    }
+  ]
+}

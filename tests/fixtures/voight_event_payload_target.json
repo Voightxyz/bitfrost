@@ -1,0 +1,78 @@
+{
+  "_source": "Derived from /Users/locotoo/voight-openai/src/types.ts EventPayload interface (lines 93-108) + observed ingest behavior of @voightxyz/openai@0.1.7",
+  "_purpose": "Target shape that Bitfrost VoightBackend must produce for POST /v1/events",
+  "_endpoint": "POST https://api.voight.xyz/v1/events",
+  "_auth_header": "Authorization: Bearer vk_<apiKey>",
+  "_content_type": "application/json",
+
+  "schema": {
+    "agentId": {"type": "string?", "purpose": "Voight agent identifier (CUID or freeform). Optional; backend resolves from apiKey if absent."},
+    "timestamp": {"type": "number | string?", "purpose": "Event time (ms epoch or ISO 8601). Optional; backend uses receivedAt if absent."},
+    "type": {"type": "enum?", "values": ["reasoning", "tool", "tx", "decision", "action", "error"], "purpose": "Event category"},
+    "input": {"type": "Record<string, unknown>?", "purpose": "Input data (e.g., {messages: [...]} for LLM calls)"},
+    "reasoning": {"type": "string?", "purpose": "Human-readable description"},
+    "toolsConsidered": {"type": "string[]?"},
+    "toolExecuted": {"type": "string?", "purpose": "First tool name for audit-log compat"},
+    "transaction": {"type": "string | null?", "purpose": "Solana tx signature"},
+    "amount": {"type": "{token: string, value: number} | null?"},
+    "outcome": {"type": "enum?", "values": ["pending", "success", "failed"]},
+    "durationMs": {"type": "integer?", "purpose": "MUST be integer (Zod strict). Bitfrost must round(end_ns - start_ns) / 1_000_000"},
+    "errorMessage": {"type": "string?"},
+    "model": {"type": "string?", "purpose": "Model id (e.g., gpt-4o-mini, claude-haiku-4-5)"},
+    "metadata": {"type": "Record<string, unknown>?", "purpose": "Free-form key-value. See metadata expected fields below."}
+  },
+
+  "metadata_expected_fields": {
+    "tokens": {"type": "object?", "fields": {
+      "input": "integer",
+      "output": "integer",
+      "total": "integer (input+output)",
+      "cache_read": "integer? (only when >0, Anthropic + OpenAI both)",
+      "cache_creation": "integer? (Anthropic only, >0 only)",
+      "reasoning": "integer? (o1, o3 models, >0 only)"
+    }},
+    "source": "string — emitter identifier (e.g., 'openai-sdk', 'anthropic-sdk', 'vercel-ai-sdk', 'bitfrost')",
+    "provider": "string — base provider when source is generic (openai/anthropic/google/etc)",
+    "providerSurface": "string — full provider routing (e.g., 'openai.responses')",
+    "api": "string? — API surface used (e.g., 'responses', 'vercel-ai')",
+    "sessionId": "string — UUID v4, groups events into one trace",
+    "spanId": "string — UUID v4 per intercepted call",
+    "parentSpanId": "string? — for nested calls",
+    "endpoint": "string? — route tag (e.g., 'POST /api/chat')",
+    "streaming": "boolean? — was this a streaming call",
+    "finishReason": "string? — model finish reason (stop/end_turn/tool_use/...)",
+    "toolCalls": "Array<{id, name, arguments}>? — tool/function calls",
+    "responseText": "string? — model response (subject to privacy)",
+    "privacyLevel": "enum — 'minimal' | 'standard' | 'full'",
+    "tags": "Record<string, unknown>? — withTrace tags (e.g., {userId, plan, org})",
+    "traceId": "string? — when inside withTrace block",
+    "routeTag": "string? — withTrace route tag",
+    "logs": "Array<{ts, level, message}>? — withTrace logs"
+  },
+
+  "example_payload_minimal": {
+    "type": "action",
+    "model": "gpt-4o-mini",
+    "outcome": "success",
+    "durationMs": 1775,
+    "input": {"messages": [{"role": "user", "content": "Reply with exactly: pong"}]},
+    "metadata": {
+      "source": "bitfrost",
+      "provider": "openai",
+      "tokens": {"input": 12, "output": 1, "total": 13, "cache_read": 0},
+      "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+      "spanId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "finishReason": "stop",
+      "responseText": "pong",
+      "privacyLevel": "standard"
+    }
+  },
+
+  "critical_constraints": [
+    "durationMs MUST be integer (Zod validates strict, float rejected)",
+    "If voightApiKey missing, ingest must no-op silently (no throw)",
+    "Network failures must swallow silently (fire-and-forget pattern)",
+    "metadata keys with empty objects {} should collapse to undefined (not emit empty {})",
+    "If outcome='failed', errorMessage SHOULD be populated"
+  ]
+}

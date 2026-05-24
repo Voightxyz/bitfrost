@@ -1,0 +1,57 @@
+{
+  "library": "opentelemetry-instrumentation-anthropic",
+  "library_version": "0.50.1",
+  "anthropic_sdk_version": "0.104.1",
+  "model_called": "claude-haiku-4-5",
+  "spans_count": 1,
+  "spans": [
+    {
+      "name": "anthropic.chat",
+      "kind": "SpanKind.CLIENT",
+      "status": {
+        "status_code": "StatusCode.OK",
+        "description": null
+      },
+      "start_time_ns": 1779577833273412000,
+      "end_time_ns": 1779577834121194000,
+      "duration_ns": 847782000,
+      "attributes": {
+        "gen_ai.system": "Anthropic",
+        "llm.request.type": "completion",
+        "gen_ai.request.model": "claude-haiku-4-5",
+        "gen_ai.prompt.0.content": "Reply with exactly: pong",
+        "gen_ai.prompt.0.role": "user",
+        "gen_ai.response.model": "claude-haiku-4-5-20251001",
+        "gen_ai.response.id": "msg_016TMd6A5GZ4jiZWasvscWtJ",
+        "gen_ai.completion.0.finish_reason": "end_turn",
+        "gen_ai.completion.0.role": "assistant",
+        "gen_ai.completion.0.content": "pong",
+        "gen_ai.usage.input_tokens": 13,
+        "gen_ai.usage.output_tokens": 5,
+        "llm.usage.total_tokens": 18,
+        "gen_ai.usage.cache_read_input_tokens": 0,
+        "gen_ai.usage.cache_creation_input_tokens": 0
+      },
+      "events": [],
+      "links": [],
+      "resource_attributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.41.1",
+        "service.name": "unknown_service"
+      },
+      "instrumentation_scope": {
+        "name": "opentelemetry.instrumentation.anthropic",
+        "version": "0.50.1"
+      },
+      "context": {
+        "trace_id_hex": "6dd0d04ab9f1c69db90d61d7fa3dcb8b",
+        "span_id_hex": "efcbd8f58204bbcf"
+      },
+      "parent": null,
+      "dropped_attributes_count": 0,
+      "dropped_events_count": 0,
+      "dropped_links_count": 0
+    }
+  ]
+}
