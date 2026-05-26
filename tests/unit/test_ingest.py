@@ -204,3 +204,135 @@ def test_create_client_works_without_explicit_transport() -> None:
     )
     # Smoke: client is callable and has a `send` attribute.
     assert callable(client.send)
+
+
+# ---------------------------------------------------------------------------
+# Shutdown / force_flush — drain in-flight HTTP before exit
+#
+# Without this drain the daemon threads spawned by ``send`` die when the
+# Python interpreter exits, dropping HTTP requests silently. Stages 1+2
+# Bitfrost smokes (2026-05-25) hit exactly this and produced zero events
+# in the dashboard. The tests below pin the drain semantics.
+# ---------------------------------------------------------------------------
+
+
+def test_force_flush_waits_for_in_flight_thread() -> None:
+    """``force_flush`` blocks until the dispatch thread completes."""
+
+    completed = threading.Event()
+
+    def slow_transport(*_args: Any, **_kwargs: Any) -> Any:
+        # Simulate a 200ms HTTP request — well within the flush budget.
+        threading.Event().wait(0.2)
+        completed.set()
+        return type("R", (), {"status_code": 202, "is_success": True, "text": ""})()
+
+    client = create_ingest_client(
+        api_base="https://api.voight.xyz",
+        api_key="vk_test_key",
+        transport=slow_transport,
+    )
+    client.send({"x": 1})
+    assert not completed.is_set(), "transport should not have completed before flush"
+    drained = client.force_flush(timeout_millis=2000)
+    assert drained is True, "force_flush should return True when threads exit in time"
+    assert completed.is_set(), "force_flush returned before transport completed"
+
+
+def test_force_flush_honors_timeout_when_thread_exceeds_budget() -> None:
+    """If the request runs longer than the budget, ``force_flush`` returns False."""
+
+    release = threading.Event()
+
+    def hung_transport(*_args: Any, **_kwargs: Any) -> Any:
+        release.wait(timeout=2.0)
+        return type("R", (), {"status_code": 202, "is_success": True, "text": ""})()
+
+    client = create_ingest_client(
+        api_base="https://api.voight.xyz",
+        api_key="vk_test_key",
+        transport=hung_transport,
+    )
+    client.send({"x": 1})
+    drained = client.force_flush(timeout_millis=100)  # 100ms vs hung 2s
+    assert drained is False, "force_flush should return False on timeout"
+    release.set()  # let the daemon thread finish so the test doesn't leak it
+
+
+def test_shutdown_blocks_further_sends() -> None:
+    """After ``shutdown``, ``send`` becomes a silent no-op."""
+
+    transport = MagicMock(
+        return_value=type("R", (), {"status_code": 202, "is_success": True, "text": ""})()
+    )
+    client = create_ingest_client(
+        api_base="https://api.voight.xyz",
+        api_key="vk_test_key",
+        transport=transport,
+    )
+    client.shutdown(timeout_seconds=1.0)
+    client.send({"x": 1})
+    # Wait briefly to confirm no background thread fired.
+    threading.Event().wait(0.05)
+    assert not transport.called, "shutdown should silence subsequent sends"
+
+
+def test_shutdown_is_idempotent() -> None:
+    """Calling ``shutdown`` twice must not raise or double-join."""
+
+    transport = MagicMock(
+        return_value=type("R", (), {"status_code": 202, "is_success": True, "text": ""})()
+    )
+    client = create_ingest_client(
+        api_base="https://api.voight.xyz",
+        api_key="vk_test_key",
+        transport=transport,
+    )
+    client.send({"x": 1})
+    assert client.shutdown(timeout_seconds=1.0) is True
+    # Second call: already drained, must still return True without raising.
+    assert client.shutdown(timeout_seconds=1.0) is True
+
+
+def test_shutdown_drains_multiple_in_flight_threads() -> None:
+    """``shutdown`` waits for every concurrent dispatch, not just the first."""
+
+    completed_count = 0
+    counter_lock = threading.Lock()
+
+    def slow_transport(*_args: Any, **_kwargs: Any) -> Any:
+        nonlocal completed_count
+        threading.Event().wait(0.1)
+        with counter_lock:
+            completed_count += 1
+        return type("R", (), {"status_code": 202, "is_success": True, "text": ""})()
+
+    client = create_ingest_client(
+        api_base="https://api.voight.xyz",
+        api_key="vk_test_key",
+        transport=slow_transport,
+    )
+    for i in range(5):
+        client.send({"i": i})
+    drained = client.shutdown(timeout_seconds=3.0)
+    assert drained is True
+    assert completed_count == 5, f"expected 5 completions, got {completed_count}"
+
+
+def test_force_flush_does_not_mark_shutdown() -> None:
+    """``force_flush`` drains but leaves the client usable for new sends."""
+
+    transport = MagicMock(
+        return_value=type("R", (), {"status_code": 202, "is_success": True, "text": ""})()
+    )
+    client = create_ingest_client(
+        api_base="https://api.voight.xyz",
+        api_key="vk_test_key",
+        transport=transport,
+    )
+    client.send({"first": True})
+    client.force_flush(timeout_millis=1000)
+    transport.reset_mock()
+    client.send({"second": True})
+    _wait_for_call(transport)
+    assert transport.called, "force_flush must not silence further sends"

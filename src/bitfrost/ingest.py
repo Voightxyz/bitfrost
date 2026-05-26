@@ -27,6 +27,7 @@ from __future__ import annotations
 import contextlib
 import json
 import threading
+import time
 from collections.abc import Callable
 from typing import Any, Protocol
 
@@ -61,9 +62,23 @@ class Transport(Protocol):
 
 
 class IngestClient(Protocol):
-    """Public surface returned by :func:`create_ingest_client`."""
+    """Public surface returned by :func:`create_ingest_client`.
+
+    Required methods:
+
+    - ``send(event)`` — fire-and-forget dispatch. Returns immediately; the
+      HTTP request happens on a daemon thread.
+    - ``shutdown(timeout_seconds)`` — block new sends, drain in-flight
+      threads up to ``timeout_seconds``. Returns ``True`` when fully drained,
+      ``False`` on timeout. Idempotent.
+    - ``force_flush(timeout_millis)`` — drain in-flight threads up to the
+      OTel-style millisecond budget WITHOUT marking the client shut down.
+      Callers can keep sending after a successful flush.
+    """
 
     def send(self, event: dict[str, Any]) -> None: ...
+    def shutdown(self, timeout_seconds: float = 30.0) -> bool: ...
+    def force_flush(self, timeout_millis: int = 30000) -> bool: ...
 
 
 def create_ingest_client(
@@ -115,8 +130,23 @@ def create_ingest_client(
 
     error_handler = on_error or _noop
 
+    # In-flight tracking — daemon threads spawned by ``send`` are added here
+    # and removed in the dispatch ``finally``. ``shutdown`` / ``force_flush``
+    # walk a snapshot of this set with ``thread.join(timeout)`` so callers
+    # (``provider.force_flush`` / ``provider.shutdown``) actually wait for
+    # the HTTP requests to complete instead of letting daemon threads die
+    # silently at interpreter shutdown.
+    in_flight: set[threading.Thread] = set()
+    in_flight_lock = threading.Lock()
+    shutdown_event = threading.Event()
+
     class _Client:
         def send(self, event: dict[str, Any]) -> None:
+            if shutdown_event.is_set():
+                # After shutdown we silently drop — sending here would spawn
+                # a thread that the shutdown waiter already moved past.
+                return
+
             try:
                 body = json.dumps(event, separators=(",", ":")).encode("utf-8")
             except (TypeError, ValueError) as err:
@@ -125,28 +155,63 @@ def create_ingest_client(
                 _safe_call(error_handler, err)
                 return
 
+            # The dispatched thread closes over its own reference via
+            # ``thread_box`` so it can remove itself from ``in_flight``
+            # when the request completes (success or error).
+            thread_box: list[threading.Thread] = []
+
             def _dispatch() -> None:
                 try:
-                    response = transport_impl(
-                        url,
-                        method="POST",
-                        headers=headers,
-                        body=body,
-                        timeout=timeout_seconds,
-                    )
-                except BaseException as err:
-                    _safe_call(error_handler, err)
-                    return
-                if not _response_ok(response):
-                    _safe_call(
-                        error_handler,
-                        RuntimeError(
-                            f"voight ingest failed: {response.status_code} {response.text!r}"
-                        ),
-                    )
+                    try:
+                        response = transport_impl(
+                            url,
+                            method="POST",
+                            headers=headers,
+                            body=body,
+                            timeout=timeout_seconds,
+                        )
+                    except BaseException as err:
+                        _safe_call(error_handler, err)
+                        return
+                    if not _response_ok(response):
+                        _safe_call(
+                            error_handler,
+                            RuntimeError(
+                                f"voight ingest failed: {response.status_code} {response.text!r}"
+                            ),
+                        )
+                finally:
+                    if thread_box:
+                        with in_flight_lock:
+                            in_flight.discard(thread_box[0])
 
             thread = threading.Thread(target=_dispatch, daemon=True)
+            thread_box.append(thread)
+            with in_flight_lock:
+                in_flight.add(thread)
             thread.start()
+
+        def shutdown(self, timeout_seconds: float = 30.0) -> bool:
+            """Block new ``send`` calls and drain in-flight threads.
+
+            Idempotent — a second call simply re-drains (which is a no-op if
+            the first call already completed). Returns ``True`` when every
+            in-flight thread has exited, ``False`` if the timeout elapsed
+            with threads still alive.
+            """
+
+            shutdown_event.set()
+            return _drain(timeout_seconds, in_flight, in_flight_lock)
+
+        def force_flush(self, timeout_millis: int = 30000) -> bool:
+            """Drain in-flight threads WITHOUT marking the client shut down.
+
+            Lets the OTel ``provider.force_flush(timeout_millis)`` path wait
+            for actual HTTP completion, not just for spans to leave the
+            processor. Callers can still ``send`` after a successful flush.
+            """
+
+            return _drain(timeout_millis / 1000.0, in_flight, in_flight_lock)
 
     return _Client()
 
@@ -154,6 +219,31 @@ def create_ingest_client(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _drain(
+    timeout_seconds: float,
+    in_flight: set[threading.Thread],
+    lock: threading.Lock,
+) -> bool:
+    """Wait for every in-flight dispatch thread or until the deadline elapses.
+
+    We take a snapshot under ``lock`` so we don't iterate the set while
+    completing threads remove themselves. ``thread.join(timeout)`` honours a
+    per-thread remaining budget derived from a monotonic deadline.
+    """
+
+    if timeout_seconds < 0:
+        timeout_seconds = 0.0
+    deadline = time.monotonic() + timeout_seconds
+    with lock:
+        snapshot = list(in_flight)
+    for thread in snapshot:
+        remaining = max(0.0, deadline - time.monotonic())
+        thread.join(timeout=remaining)
+    with lock:
+        still_alive = any(t.is_alive() for t in in_flight)
+    return not still_alive
 
 
 def _response_ok(response: Any) -> bool:

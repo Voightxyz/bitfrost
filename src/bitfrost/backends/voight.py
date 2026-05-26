@@ -21,6 +21,7 @@ Bitfrost stack stays usable without ever touching ``api.voight.xyz``.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -92,25 +93,33 @@ class VoightBackend:
         self._client.send(event)
 
     def shutdown(self) -> None:
-        """Mark the backend as drained.
+        """Block new sends and wait for in-flight HTTP requests to complete.
 
-        v0.1 dispatches each event on its own daemon thread without a
-        retry buffer, so there is no internal state to flush. Future
-        versions with a retry queue will use this to drain it.
+        Idempotent. Delegates the actual drain to
+        :meth:`IngestClient.shutdown`, which joins every daemon thread
+        spawned by :meth:`send` with a 30-second budget. Without this drain
+        the daemon threads would die at interpreter shutdown — exactly the
+        bug that caused Stages 1+2 smoke events to never reach the
+        backend on 2026-05-25.
         """
 
         self._shutdown_called = True
+        with contextlib.suppress(BaseException):
+            self._client.shutdown()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
-        """No-op in v0.1 (no internal buffer to flush).
+        """Wait for in-flight HTTP requests up to ``timeout_millis``.
 
-        Returns ``True`` to signal a clean state to the OTel SDK.
-        ``timeout_millis`` is accepted for protocol compatibility but
-        ignored — there is nothing to wait for.
+        Propagates to :meth:`IngestClient.force_flush`. Unlike
+        :meth:`shutdown`, callers can still send after a successful flush —
+        this matches the OTel ``SpanExporter.force_flush`` contract.
+        Returns ``True`` when every dispatch completed in time.
         """
 
-        del timeout_millis  # Reserved for v0.2 retry-buffer support.
-        return True
+        try:
+            return bool(self._client.force_flush(timeout_millis))
+        except BaseException:
+            return False
 
 
 __all__ = ["DEFAULT_API_BASE", "VoightBackend"]
