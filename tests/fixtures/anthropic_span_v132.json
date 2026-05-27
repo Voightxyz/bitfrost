@@ -1,0 +1,27 @@
+[
+  {
+    "name": "anthropic.chat",
+    "status_code": "StatusCode.OK",
+    "start_time_ns": 1779839998413090000,
+    "end_time_ns": 1779839999028060000,
+    "instrumentation_scope": "opentelemetry.instrumentation.anthropic",
+    "attributes": {
+      "gen_ai.provider.name": "anthropic",
+      "gen_ai.operation.name": "chat",
+      "gen_ai.request.model": "claude-haiku-4-5",
+      "gen_ai.request.max_tokens": 10,
+      "gen_ai.input.messages": "[{\"role\": \"user\", \"parts\": [{\"type\": \"text\", \"content\": \"Reply with exactly: pong\"}]}]",
+      "gen_ai.response.model": "claude-haiku-4-5-20251001",
+      "gen_ai.response.id": "msg_01KyFKSKMvXAJVp4iMyHBXsS",
+      "gen_ai.response.finish_reasons": [
+        "stop"
+      ],
+      "gen_ai.output.messages": "[{\"role\": \"assistant\", \"parts\": [{\"type\": \"text\", \"content\": \"pong\"}], \"finish_reason\": \"stop\"}]",
+      "gen_ai.usage.input_tokens": 13,
+      "gen_ai.usage.output_tokens": 5,
+      "gen_ai.usage.total_tokens": 18,
+      "gen_ai.usage.cache_read.input_tokens": 0,
+      "gen_ai.usage.cache_creation.input_tokens": 0
+    }
+  }
+]

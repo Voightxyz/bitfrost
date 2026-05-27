@@ -35,12 +35,51 @@ GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
 GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS = "gen_ai.usage.cache_read_input_tokens"
 GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS = "gen_ai.usage.cache_creation_input_tokens"
 
-# Indexed prompts and completions:
+# Indexed prompts and completions (v1.27 — pre-2026):
 #   gen_ai.prompt.0.role / gen_ai.prompt.0.content
 #   gen_ai.prompt.1.role / gen_ai.prompt.1.content
 #   gen_ai.completion.0.role / gen_ai.completion.0.content / .finish_reason
 GEN_AI_PROMPT_PREFIX = "gen_ai.prompt."
 GEN_AI_COMPLETION_PREFIX = "gen_ai.completion."
+
+
+# ---------------------------------------------------------------------------
+# OTel GenAI semantic conventions v1.32+ (Q1 2026)
+# ---------------------------------------------------------------------------
+#
+# The semconv shipped breaking renames between v1.27 and v1.32 to align
+# with OTel's broader resource-naming style. Modern instrumentation
+# libraries (opentelemetry-instrumentation-openai >= 0.60, anthropic
+# >= 0.60, smolagents, LiteLLM >= 1.50) emit the v1.32 names below.
+# Older libraries still emit the v1.27 names above.
+#
+# The mapper reads BOTH generations: v1.32 takes priority on a per-field
+# basis, then falls back to v1.27 so older spans still work end-to-end.
+# This is the same pattern Logfire / Phoenix / Langfuse / Braintrust use
+# — Bitfrost is OTel-spec-native, not pinned to one instrumentation
+# version.
+
+# Renamed: gen_ai.system → gen_ai.provider.name
+GEN_AI_PROVIDER_NAME = "gen_ai.provider.name"
+
+# New: explicit operation name (e.g. "chat", "embeddings", "completion").
+GEN_AI_OPERATION_NAME = "gen_ai.operation.name"
+
+# New canonical streaming flag (was llm.is_streaming in v1.27).
+GEN_AI_IS_STREAMING = "gen_ai.is_streaming"
+
+# Renamed: indexed `gen_ai.prompt.N.*` and `gen_ai.completion.N.*`
+# collapsed into single JSON-string attributes. Format per spec:
+#   "[{\"role\": \"user\", \"parts\": [{\"type\": \"text\", \"content\": \"...\"}]}]"
+GEN_AI_INPUT_MESSAGES = "gen_ai.input.messages"
+GEN_AI_OUTPUT_MESSAGES = "gen_ai.output.messages"
+
+# Renamed (extra dot): gen_ai.usage.cache_read_input_tokens
+#                    → gen_ai.usage.cache_read.input_tokens
+GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_DOTTED = "gen_ai.usage.cache_read.input_tokens"
+GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_DOTTED = (
+    "gen_ai.usage.cache_creation.input_tokens"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +144,12 @@ __all__ = [
     "AI_USAGE_COMPLETION_TOKENS",
     "AI_USAGE_PROMPT_TOKENS",
     "GEN_AI_COMPLETION_PREFIX",
+    "GEN_AI_INPUT_MESSAGES",
+    "GEN_AI_IS_STREAMING",
+    "GEN_AI_OPERATION_NAME",
+    "GEN_AI_OUTPUT_MESSAGES",
     "GEN_AI_PROMPT_PREFIX",
+    "GEN_AI_PROVIDER_NAME",
     "GEN_AI_REQUEST_MAX_TOKENS",
     "GEN_AI_REQUEST_MODEL",
     "GEN_AI_REQUEST_TEMPERATURE",
@@ -115,7 +159,9 @@ __all__ = [
     "GEN_AI_RESPONSE_MODEL",
     "GEN_AI_SYSTEM",
     "GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS",
+    "GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_DOTTED",
     "GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS",
+    "GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_DOTTED",
     "GEN_AI_USAGE_INPUT_TOKENS",
     "GEN_AI_USAGE_OUTPUT_TOKENS",
     "LLM_HEADERS",

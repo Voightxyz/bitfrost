@@ -19,6 +19,7 @@ to the nearest millisecond using :func:`round`.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -29,11 +30,17 @@ from bitfrost.conventions import (
     AI_USAGE_CACHED_INPUT_TOKENS,
     AI_USAGE_COMPLETION_TOKENS,
     AI_USAGE_PROMPT_TOKENS,
+    GEN_AI_INPUT_MESSAGES,
+    GEN_AI_OUTPUT_MESSAGES,
+    GEN_AI_PROVIDER_NAME,
     GEN_AI_REQUEST_MODEL,
+    GEN_AI_RESPONSE_FINISH_REASONS,
     GEN_AI_RESPONSE_MODEL,
     GEN_AI_SYSTEM,
     GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
+    GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_DOTTED,
     GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
+    GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_DOTTED,
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
     LLM_USAGE_REASONING_TOKENS,
@@ -148,15 +155,28 @@ def _is_llm_span(attributes: Mapping[str, Any]) -> bool:
 def _extract_provider(attributes: Mapping[str, Any]) -> str:
     """Return the lowercased base provider name.
 
-    Primary source: ``gen_ai.system`` (e.g. ``"openai"`` or ``"Anthropic"``).
-    Fallback: ``ai.model.provider`` (e.g. ``"openai.responses"``).
+    Priority chain (OTel GenAI semconv evolution + Vercel fallback):
 
-    Vercel AI SDK provider strings may include a sub-surface
-    (``"openai.responses"``) — we keep only the segment before the first dot
-    so dashboards bucket all OpenAI surfaces under one provider.
+    1. ``gen_ai.provider.name`` — OTel GenAI semconv **v1.32+** canonical
+       (opentelemetry-instrumentation-openai >= 0.60, anthropic >= 0.60,
+       smolagents, LiteLLM modern).
+    2. ``gen_ai.system`` — OTel GenAI semconv **v1.27-1.31** (older
+       instrumentation libraries; kept as fallback so older spans still
+       map cleanly).
+    3. ``ai.model.provider`` — **Vercel AI SDK** convention. May include
+       a sub-surface (``"openai.responses"``) — we keep only the
+       segment before the first dot so dashboards bucket all OpenAI
+       surfaces under one provider.
+
+    Returns the empty string when no source matches; callers cascade.
     """
 
-    raw = attributes.get(GEN_AI_SYSTEM) or attributes.get(AI_MODEL_PROVIDER) or ""
+    raw = (
+        attributes.get(GEN_AI_PROVIDER_NAME)
+        or attributes.get(GEN_AI_SYSTEM)
+        or attributes.get(AI_MODEL_PROVIDER)
+        or ""
+    )
     raw_str = str(raw).lower()
     if "." in raw_str:
         raw_str = raw_str.split(".", 1)[0]
@@ -198,12 +218,20 @@ def _extract_tokens(attributes: Mapping[str, Any]) -> TokenBreakdown:
     output_tokens = _coerce_int(
         attributes.get(GEN_AI_USAGE_OUTPUT_TOKENS) or attributes.get(AI_USAGE_COMPLETION_TOKENS)
     )
+    # Cache attrs: v1.32+ uses a DOTTED variant
+    # (``gen_ai.usage.cache_read.input_tokens``) while v1.27 uses an
+    # underscore variant (``gen_ai.usage.cache_read_input_tokens``).
+    # Modern instrumentation libraries emit the dotted form; we read
+    # whichever is present (they never coexist on the same span) and
+    # fall back to the Vercel AI SDK convention last.
     cache_read = _coerce_int(
-        attributes.get(GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS)
+        attributes.get(GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_DOTTED)
+        or attributes.get(GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS)
         or attributes.get(AI_USAGE_CACHED_INPUT_TOKENS)
     )
     cache_creation = _coerce_int(
-        attributes.get(GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS)
+        attributes.get(GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_DOTTED)
+        or attributes.get(GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS)
         or attributes.get(AI_USAGE_CACHE_CREATION_INPUT_TOKENS)
     )
     reasoning = _coerce_int(attributes.get(LLM_USAGE_REASONING_TOKENS))
@@ -234,17 +262,101 @@ def _coerce_int(value: Any) -> int:
 def _extract_indexed_prompts(
     attributes: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
-    """Walk ``gen_ai.prompt.<i>.role`` / ``content`` indexed attributes."""
+    """Extract prompt messages, supporting both semconv generations.
 
+    v1.32+ ships one attribute ``gen_ai.input.messages`` containing a
+    JSON-stringified array. v1.27 ships indexed attributes
+    ``gen_ai.prompt.N.role`` / ``content``. We try v1.32+ first because
+    it is the canonical modern shape; fall back to the indexed walk if
+    not present (or if the JSON is malformed).
+    """
+
+    parsed = _parse_messages_blob(attributes.get(GEN_AI_INPUT_MESSAGES))
+    if parsed is not None:
+        return parsed
     return _extract_indexed("gen_ai.prompt.", attributes)
 
 
 def _extract_indexed_completions(
     attributes: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
-    """Walk ``gen_ai.completion.<i>.role`` / ``content`` / ``finish_reason``."""
+    """Extract completion messages, supporting both semconv generations.
 
+    v1.32+ ships ``gen_ai.output.messages`` (JSON blob) plus a sibling
+    top-level array ``gen_ai.response.finish_reasons`` aligned by index.
+    We fold the matching finish reason into each parsed message so
+    downstream callers see the same shape as the v1.27 indexed walk
+    (``role`` / ``content`` / ``finish_reason``).
+    """
+
+    parsed = _parse_messages_blob(attributes.get(GEN_AI_OUTPUT_MESSAGES))
+    if parsed is not None:
+        finish_reasons = attributes.get(GEN_AI_RESPONSE_FINISH_REASONS)
+        if isinstance(finish_reasons, (list, tuple)):
+            for i, msg in enumerate(parsed):
+                if i < len(finish_reasons) and "finish_reason" not in msg:
+                    msg["finish_reason"] = finish_reasons[i]
+        return parsed
     return _extract_indexed("gen_ai.completion.", attributes)
+
+
+def _parse_messages_blob(value: Any) -> list[dict[str, Any]] | None:
+    """Parse a v1.32+ ``gen_ai.{input,output}.messages`` JSON string.
+
+    Spec shape::
+
+        [{"role": "user",
+          "parts": [{"type": "text", "content": "Hi"}]}]
+
+    The mapper flattens ``parts[*].content`` into a single ``content``
+    string per message (joined by newlines for multi-part messages) so
+    the rest of the mapper keeps a flat shape consistent with the v1.27
+    indexed walk. Non-text parts (image, audio) are skipped — the
+    payload metadata stays scrubbing-friendly. Returns ``None`` on
+    parse error or wrong shape so the caller falls back to the
+    indexed walk.
+    """
+
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        data = json.loads(value)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(data, list):
+        return None
+    out: list[dict[str, Any]] = []
+    for msg in data:
+        if not isinstance(msg, dict):
+            continue
+        role = msg.get("role")
+        content = _extract_message_content(msg)
+        entry: dict[str, Any] = {"role": role, "content": content}
+        # Preserve any explicit finish_reason on the message itself
+        # (Anthropic 0.60+ stamps it inline on output messages).
+        if "finish_reason" in msg:
+            entry["finish_reason"] = msg["finish_reason"]
+        out.append(entry)
+    return out
+
+
+def _extract_message_content(msg: dict[str, Any]) -> str:
+    """Pull text content from a v1.32+ message dict.
+
+    Handles both shapes the spec allows:
+    - ``{"content": "..."}`` (legacy passthrough)
+    - ``{"parts": [{"type": "text", "content": "..."}, ...]}``
+    """
+
+    parts = msg.get("parts")
+    if isinstance(parts, list):
+        texts = [
+            str(p.get("content", ""))
+            for p in parts
+            if isinstance(p, dict) and p.get("type") in (None, "text")
+        ]
+        return "\n".join(t for t in texts if t)
+    return str(msg.get("content", ""))
 
 
 def _extract_indexed(prefix: str, attributes: Mapping[str, Any]) -> list[dict[str, Any]]:

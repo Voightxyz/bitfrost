@@ -1,0 +1,31 @@
+[
+  {
+    "name": "openai.chat",
+    "status_code": "StatusCode.UNSET",
+    "start_time_ns": 1779840025916720000,
+    "end_time_ns": 1779840026733726000,
+    "instrumentation_scope": "opentelemetry.instrumentation.openai.v1",
+    "attributes": {
+      "gen_ai.operation.name": "chat",
+      "gen_ai.provider.name": "openai",
+      "gen_ai.request.model": "gpt-4o-mini",
+      "gen_ai.request.max_tokens": 10,
+      "gen_ai.is_streaming": false,
+      "gen_ai.openai.api_base": "https://api.openai.com/v1/",
+      "gen_ai.input.messages": "[{\"role\": \"user\", \"parts\": [{\"content\": \"Reply with exactly: pong\", \"type\": \"text\"}]}]",
+      "gen_ai.response.model": "gpt-4o-mini-2024-07-18",
+      "gen_ai.response.id": "chatcmpl-Djvz83zWiY9lwv0D3yfCpuA58LUuv",
+      "gen_ai.response.finish_reasons": [
+        "stop"
+      ],
+      "gen_ai.openai.response.system_fingerprint": "fp_2767f2907f",
+      "openai.response.service_tier": "default",
+      "gen_ai.usage.total_tokens": 13,
+      "gen_ai.usage.output_tokens": 1,
+      "gen_ai.usage.input_tokens": 12,
+      "gen_ai.usage.cache_read.input_tokens": 0,
+      "gen_ai.usage.reasoning_tokens": 0,
+      "gen_ai.output.messages": "[{\"role\": \"assistant\", \"parts\": [{\"content\": \"pong\", \"type\": \"text\"}], \"finish_reason\": \"stop\"}]"
+    }
+  }
+]

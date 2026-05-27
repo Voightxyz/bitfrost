@@ -509,3 +509,287 @@ def test_maps_real_anthropic_fixture_correctly(anthropic_fixture_span: dict[str,
     assert result["input"]["messages"] == [{"role": "user", "content": "Reply with exactly: pong"}]
     assert result["metadata"]["responseText"] == "pong"
     assert result["metadata"]["finishReason"] == "end_turn"
+
+
+# ---------------------------------------------------------------------------
+# OTel GenAI semconv v1.32+ — modern instrumentation libraries
+#
+# Q1 2026 the OTel GenAI working group renamed several attributes for
+# consistency with broader OTel resource-naming style. Modern
+# instrumentation packages (opentelemetry-instrumentation-openai >=
+# 0.60, anthropic >= 0.60, smolagents, LiteLLM modern) emit the new
+# names below. Bitfrost reads BOTH generations on every field so an
+# upgrade or a mixed-library codebase keeps working end-to-end. These
+# tests pin the v1.32+ path; the existing tests above cover v1.27.
+# ---------------------------------------------------------------------------
+
+
+def test_provider_extracted_from_v132_provider_name() -> None:
+    """``gen_ai.provider.name`` is the v1.32+ canonical key."""
+
+    result = map_attributes(
+        **_base_args(
+            attributes={
+                "gen_ai.provider.name": "openai",
+                "gen_ai.request.model": "gpt-4o-mini",
+            }
+        )
+    )
+    assert result is not None
+    assert result["metadata"]["provider"] == "openai"
+
+
+def test_provider_v132_takes_priority_over_v127_when_both_present() -> None:
+    """If both names appear, v1.32+ wins so upgrades are forward-compatible."""
+
+    result = map_attributes(
+        **_base_args(
+            attributes={
+                "gen_ai.provider.name": "anthropic",  # v1.32+
+                "gen_ai.system": "openai",  # v1.27 — should be ignored
+                "gen_ai.request.model": "claude-haiku-4-5",
+            }
+        )
+    )
+    assert result is not None
+    assert result["metadata"]["provider"] == "anthropic"
+
+
+def test_provider_v127_used_as_fallback_when_v132_absent() -> None:
+    """Older instrumentation libraries still map cleanly via ``gen_ai.system``."""
+
+    result = map_attributes(
+        **_base_args(
+            attributes={
+                "gen_ai.system": "openai",
+                "gen_ai.request.model": "gpt-4o-mini",
+            }
+        )
+    )
+    assert result is not None
+    assert result["metadata"]["provider"] == "openai"
+
+
+def test_input_messages_parsed_from_v132_json_blob() -> None:
+    """``gen_ai.input.messages`` is a JSON string of typed-parts messages."""
+
+    blob = '[{"role": "user", "parts": [{"type": "text", "content": "Hello"}]}]'
+    result = map_attributes(
+        **_base_args(
+            attributes={
+                "gen_ai.provider.name": "openai",
+                "gen_ai.request.model": "gpt-4o-mini",
+                "gen_ai.input.messages": blob,
+            }
+        )
+    )
+    assert result is not None
+    assert result["input"]["messages"] == [{"role": "user", "content": "Hello"}]
+
+
+def test_output_messages_parsed_from_v132_with_finish_reasons() -> None:
+    """``gen_ai.output.messages`` + sibling ``gen_ai.response.finish_reasons``.
+
+    The finish reasons array aligns by index with the parsed messages.
+    """
+
+    blob = '[{"role": "assistant", "parts": [{"type": "text", "content": "Hi back"}]}]'
+    result = map_attributes(
+        **_base_args(
+            attributes={
+                "gen_ai.provider.name": "openai",
+                "gen_ai.request.model": "gpt-4o-mini",
+                "gen_ai.output.messages": blob,
+                "gen_ai.response.finish_reasons": ["stop"],
+            }
+        )
+    )
+    assert result is not None
+    assert result["metadata"]["responseText"] == "Hi back"
+    assert result["metadata"]["finishReason"] == "stop"
+
+
+def test_inline_finish_reason_on_output_message_preserved() -> None:
+    """Anthropic 0.60+ stamps ``finish_reason`` inline on each output message.
+
+    When the message dict already carries one we don't overwrite from the
+    sibling array — the inline value is more specific.
+    """
+
+    blob = (
+        '[{"role": "assistant", '
+        '"parts": [{"type": "text", "content": "pong"}], '
+        '"finish_reason": "end_turn"}]'
+    )
+    result = map_attributes(
+        **_base_args(
+            span_name="anthropic.chat",
+            attributes={
+                "gen_ai.provider.name": "anthropic",
+                "gen_ai.request.model": "claude-haiku-4-5",
+                "gen_ai.output.messages": blob,
+                "gen_ai.response.finish_reasons": ["stop"],  # less specific
+            },
+        )
+    )
+    assert result is not None
+    assert result["metadata"]["finishReason"] == "end_turn"
+
+
+def test_input_messages_falls_back_to_v127_indexed_when_blob_missing() -> None:
+    """No ``gen_ai.input.messages`` → walk the indexed ``gen_ai.prompt.N.*``."""
+
+    result = map_attributes(
+        **_base_args(
+            attributes={
+                "gen_ai.provider.name": "openai",
+                "gen_ai.request.model": "gpt-4o-mini",
+                "gen_ai.prompt.0.role": "user",
+                "gen_ai.prompt.0.content": "Indexed legacy hello",
+            }
+        )
+    )
+    assert result is not None
+    assert result["input"]["messages"] == [
+        {"role": "user", "content": "Indexed legacy hello"}
+    ]
+
+
+def test_malformed_messages_json_blob_falls_back_to_indexed_walk() -> None:
+    """A broken JSON blob doesn't break ingestion — degrade to indexed walk."""
+
+    result = map_attributes(
+        **_base_args(
+            attributes={
+                "gen_ai.provider.name": "openai",
+                "gen_ai.request.model": "gpt-4o-mini",
+                "gen_ai.input.messages": "{this is not valid JSON",
+                "gen_ai.prompt.0.role": "user",
+                "gen_ai.prompt.0.content": "Indexed survives malformed blob",
+            }
+        )
+    )
+    assert result is not None
+    assert result["input"]["messages"] == [
+        {"role": "user", "content": "Indexed survives malformed blob"}
+    ]
+
+
+def test_cache_read_extracted_from_v132_dotted_key() -> None:
+    """``gen_ai.usage.cache_read.input_tokens`` is the v1.32+ dotted form."""
+
+    result = map_attributes(
+        **_base_args(
+            attributes={
+                "gen_ai.provider.name": "anthropic",
+                "gen_ai.request.model": "claude-haiku-4-5",
+                "gen_ai.usage.input_tokens": 100,
+                "gen_ai.usage.output_tokens": 20,
+                "gen_ai.usage.cache_read.input_tokens": 75,
+                "gen_ai.usage.cache_creation.input_tokens": 10,
+            }
+        )
+    )
+    assert result is not None
+    assert result["metadata"]["tokens"]["cache_read"] == 75
+    assert result["metadata"]["tokens"]["cache_creation"] == 10
+
+
+def test_cache_read_v127_underscore_still_works_as_fallback() -> None:
+    """Older libraries that still emit the underscore form keep mapping cleanly."""
+
+    result = map_attributes(
+        **_base_args(
+            attributes={
+                "gen_ai.system": "openai",
+                "gen_ai.request.model": "gpt-4o-mini",
+                "gen_ai.usage.input_tokens": 100,
+                "gen_ai.usage.output_tokens": 20,
+                "gen_ai.usage.cache_read_input_tokens": 50,
+            }
+        )
+    )
+    assert result is not None
+    assert result["metadata"]["tokens"]["cache_read"] == 50
+
+
+# ---------------------------------------------------------------------------
+# Real v1.32+ fixtures — captured from instrumentation 0.60.0
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def openai_fixture_span_v132() -> dict[str, Any]:
+    fixture = _load_fixture("openai_span_v132.json")
+    return fixture[0]  # type: ignore[no-any-return]
+
+
+@pytest.fixture(scope="module")
+def anthropic_fixture_span_v132() -> dict[str, Any]:
+    fixture = _load_fixture("anthropic_span_v132.json")
+    return fixture[0]  # type: ignore[no-any-return]
+
+
+def test_maps_real_v132_openai_fixture_correctly(
+    openai_fixture_span_v132: dict[str, Any],
+) -> None:
+    """End-to-end against a real ``opentelemetry-instrumentation-openai==0.60.0`` span.
+
+    This is the bug that produced ``provider: ""`` in production on
+    2026-05-26 — the v1.27 mapper saw ``gen_ai.provider.name`` instead
+    of ``gen_ai.system`` and defaulted to the empty string. The v1.32+
+    multi-version fix turns this regression test green.
+    """
+
+    span = openai_fixture_span_v132
+    status_code_str = span["status_code"].split(".")[-1]
+    result = map_attributes(
+        span_name=span["name"],
+        attributes=span["attributes"],
+        start_time_ns=span["start_time_ns"],
+        end_time_ns=span["end_time_ns"],
+        status_code=status_code_str,
+        status_description=None,
+        events=None,
+        instrumentation_scope_name=span["instrumentation_scope"],
+    )
+    assert result is not None
+    assert result["metadata"]["provider"] == "openai"
+    assert result["model"] == "gpt-4o-mini"
+    assert result["outcome"] == "success"
+    assert isinstance(result["durationMs"], int)
+    assert result["metadata"]["tokens"]["output"] > 0
+    # The input messages JSON blob should parse cleanly.
+    assert result["input"]["messages"][0]["role"] == "user"
+    assert "Reply with exactly: pong" in result["input"]["messages"][0]["content"]
+    # The output messages JSON blob + finish_reasons sibling should
+    # produce a response text + finish reason.
+    assert result["metadata"]["responseText"]
+    assert result["metadata"]["finishReason"]
+
+
+def test_maps_real_v132_anthropic_fixture_correctly(
+    anthropic_fixture_span_v132: dict[str, Any],
+) -> None:
+    """End-to-end against a real ``opentelemetry-instrumentation-anthropic==0.60.0`` span."""
+
+    span = anthropic_fixture_span_v132
+    status_code_str = span["status_code"].split(".")[-1]
+    result = map_attributes(
+        span_name=span["name"],
+        attributes=span["attributes"],
+        start_time_ns=span["start_time_ns"],
+        end_time_ns=span["end_time_ns"],
+        status_code=status_code_str,
+        status_description=None,
+        events=None,
+        instrumentation_scope_name=span["instrumentation_scope"],
+    )
+    assert result is not None
+    assert result["metadata"]["provider"] == "anthropic"
+    assert result["model"] == "claude-haiku-4-5"
+    assert result["outcome"] == "success"
+    assert result["metadata"]["tokens"]["input"] == 13
+    assert result["metadata"]["tokens"]["output"] == 5
+    assert result["input"]["messages"][0]["role"] == "user"
+    assert result["metadata"]["responseText"] == "pong"
