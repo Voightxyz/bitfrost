@@ -19,5 +19,6 @@ Anyone can add a custom backend by satisfying the
 from __future__ import annotations
 
 from bitfrost.backends.base import ExportBackend
+from bitfrost.backends.tee import TeeBackend
 
-__all__ = ["ExportBackend"]
+__all__ = ["ExportBackend", "TeeBackend"]
