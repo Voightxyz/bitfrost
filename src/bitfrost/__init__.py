@@ -22,6 +22,14 @@ Backends ship in :mod:`bitfrost.backends`:
 
 from __future__ import annotations
 
+from bitfrost.instrument import (
+    instrument_anthropic,
+    instrument_auto,
+    instrument_litellm,
+    instrument_openai,
+    instrument_smolagents,
+    quickstart,
+)
 from bitfrost.types import (
     BitfrostOptions,
     EventPayload,
@@ -43,4 +51,10 @@ __all__ = [
     "TokenBreakdown",
     "ToolCallRecord",
     "__version__",
+    "instrument_anthropic",
+    "instrument_auto",
+    "instrument_litellm",
+    "instrument_openai",
+    "instrument_smolagents",
+    "quickstart",
 ]
