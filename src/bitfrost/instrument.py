@@ -162,21 +162,20 @@ def instrument_litellm(
     import litellm
 
     tracer = provider.get_tracer("bitfrost.litellm")
-    handler = _BitfrostLiteLLMHandler(tracer)
+    handler_cls = _get_litellm_handler_class()
+    handler = handler_cls(tracer)
 
     # litellm.callbacks is a list of handlers — append rather than
     # replace so users with other callbacks (Langfuse, Helicone) keep
-    # them.
+    # them. Dedup by the ``_is_bitfrost_handler`` marker attribute, NOT
+    # isinstance: the handler class is built lazily inside a factory so
+    # there's no stable module-level class object to isinstance against.
     existing = getattr(litellm, "callbacks", None)
     if isinstance(existing, list):
-        # Avoid duplicate registration on repeated instrument calls.
-        # The handler is a dynamic CustomLogger subclass, which mypy
-        # narrows away — type: ignore[list-item] silences the false
-        # positive (the runtime check is the source of truth).
-        if not any(isinstance(c, _BitfrostLiteLLMHandler) for c in existing):
+        if not any(getattr(c, "_is_bitfrost_handler", False) for c in existing):
             existing.append(handler)
     else:
-        litellm.callbacks = [handler]  # type: ignore[list-item]
+        litellm.callbacks = [handler]
 
 
 def instrument_smolagents(
@@ -379,129 +378,107 @@ def _library_importable(module_name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-class _BitfrostLiteLLMHandler:
-    """LiteLLM CustomLogger adapter that emits OTel spans on each completion.
+# The handler class is built once, lazily, by ``_get_litellm_handler_class``
+# and cached here. Lazy construction keeps litellm an optional dependency:
+# importing :mod:`bitfrost.instrument` never imports litellm; only calling
+# ``instrument_litellm`` does.
+_LITELLM_HANDLER_CLASS: type | None = None
 
-    Subclasses ``litellm.integrations.custom_logger.CustomLogger`` at
-    instance-construction time (lazy import so importing
-    :mod:`bitfrost.instrument` doesn't drag in litellm for users who
-    never call ``instrument_litellm``).
 
-    For each successful or failed ``litellm.completion`` call, LiteLLM
-    invokes ``log_success_event(kwargs, response_obj, start_time, end_time)``
-    (or the failure variant). We translate those args into an OTel span
-    with v1.32+ ``gen_ai.*`` attributes so Bitfrost's attribute_mapper
-    handles them identically to spans emitted by the openai / anthropic
-    auto-instrumentors.
+def _get_litellm_handler_class() -> type:
+    """Build (once) and return the LiteLLM ``CustomLogger`` adapter subclass.
+
+    The subclass translates each LiteLLM ``log_{success,failure}_event``
+    callback into an OTel span with semconv v1.32+ ``gen_ai.*``
+    attributes, so Bitfrost's attribute_mapper handles LiteLLM calls
+    identically to the openai / anthropic auto-instrumentor paths.
+
+    Instances carry an ``_is_bitfrost_handler = True`` marker so
+    :func:`instrument_litellm` can dedupe its own handler in
+    ``litellm.callbacks`` without relying on an isinstance check against
+    a class object that doesn't exist at module import time (litellm is
+    imported lazily).
     """
 
-    def __new__(cls, tracer: Any) -> Any:
-        # Lazy-subclass CustomLogger at instance-creation time so the
-        # litellm dependency is only required when instrument_litellm
-        # is actually called.
-        from litellm.integrations.custom_logger import CustomLogger
+    global _LITELLM_HANDLER_CLASS
+    if _LITELLM_HANDLER_CLASS is not None:
+        return _LITELLM_HANDLER_CLASS
 
-        # If the dynamic subclass hasn't been built yet, build it now
-        # and cache it on the class.
-        if not isinstance(cls, type) or not issubclass(cls, CustomLogger):
-            new_cls: type = type(
-                "_BitfrostLiteLLMHandler",
-                (CustomLogger,),
-                {
-                    "__init__": _bitfrost_litellm_init,
-                    "log_success_event": _bitfrost_litellm_log_success,
-                    "log_failure_event": _bitfrost_litellm_log_failure,
-                    "async_log_success_event": _bitfrost_litellm_alog_success,
-                    "async_log_failure_event": _bitfrost_litellm_alog_failure,
-                },
+    from litellm.integrations.custom_logger import CustomLogger
+
+    class _BitfrostLiteLLMHandler(CustomLogger):
+        _is_bitfrost_handler = True
+
+        def __init__(self, tracer: Any) -> None:
+            super().__init__()
+            self._tracer = tracer
+
+        def log_success_event(
+            self,
+            kwargs: dict[str, Any],
+            response_obj: Any,
+            start_time: Any,
+            end_time: Any,
+        ) -> None:
+            _emit_litellm_span(
+                tracer=self._tracer,
+                kwargs=kwargs,
+                response_obj=response_obj,
+                start_time=start_time,
+                end_time=end_time,
+                success=True,
             )
-            return new_cls(tracer)
-        return super().__new__(cls)
 
+        def log_failure_event(
+            self,
+            kwargs: dict[str, Any],
+            response_obj: Any,
+            start_time: Any,
+            end_time: Any,
+        ) -> None:
+            _emit_litellm_span(
+                tracer=self._tracer,
+                kwargs=kwargs,
+                response_obj=response_obj,
+                start_time=start_time,
+                end_time=end_time,
+                success=False,
+            )
 
-def _bitfrost_litellm_init(self: Any, tracer: Any) -> None:
-    """Initialiser for the dynamic _BitfrostLiteLLMHandler subclass."""
+        async def async_log_success_event(
+            self,
+            kwargs: dict[str, Any],
+            response_obj: Any,
+            start_time: Any,
+            end_time: Any,
+        ) -> None:
+            _emit_litellm_span(
+                tracer=self._tracer,
+                kwargs=kwargs,
+                response_obj=response_obj,
+                start_time=start_time,
+                end_time=end_time,
+                success=True,
+            )
 
-    # CustomLogger's __init__ takes no args in current litellm releases;
-    # call it without args for compatibility.
-    super(type(self), self).__init__()
-    self._tracer = tracer
+        async def async_log_failure_event(
+            self,
+            kwargs: dict[str, Any],
+            response_obj: Any,
+            start_time: Any,
+            end_time: Any,
+        ) -> None:
+            _emit_litellm_span(
+                tracer=self._tracer,
+                kwargs=kwargs,
+                response_obj=response_obj,
+                start_time=start_time,
+                end_time=end_time,
+                success=False,
+            )
 
-
-def _bitfrost_litellm_log_success(
-    self: Any,
-    kwargs: dict[str, Any],
-    response_obj: Any,
-    start_time: Any,
-    end_time: Any,
-) -> None:
-    """Emit a success span from a LiteLLM ``log_success_event`` callback."""
-
-    _emit_litellm_span(
-        tracer=self._tracer,
-        kwargs=kwargs,
-        response_obj=response_obj,
-        start_time=start_time,
-        end_time=end_time,
-        success=True,
-    )
-
-
-def _bitfrost_litellm_log_failure(
-    self: Any,
-    kwargs: dict[str, Any],
-    response_obj: Any,
-    start_time: Any,
-    end_time: Any,
-) -> None:
-    """Emit a failure span from a LiteLLM ``log_failure_event`` callback."""
-
-    _emit_litellm_span(
-        tracer=self._tracer,
-        kwargs=kwargs,
-        response_obj=response_obj,
-        start_time=start_time,
-        end_time=end_time,
-        success=False,
-    )
-
-
-async def _bitfrost_litellm_alog_success(
-    self: Any,
-    kwargs: dict[str, Any],
-    response_obj: Any,
-    start_time: Any,
-    end_time: Any,
-) -> None:
-    """Async variant — same shape, just an awaitable."""
-
-    _emit_litellm_span(
-        tracer=self._tracer,
-        kwargs=kwargs,
-        response_obj=response_obj,
-        start_time=start_time,
-        end_time=end_time,
-        success=True,
-    )
-
-
-async def _bitfrost_litellm_alog_failure(
-    self: Any,
-    kwargs: dict[str, Any],
-    response_obj: Any,
-    start_time: Any,
-    end_time: Any,
-) -> None:
-    """Async failure variant."""
-
-    _emit_litellm_span(
-        tracer=self._tracer,
-        kwargs=kwargs,
-        response_obj=response_obj,
-        start_time=start_time,
-        end_time=end_time,
-        success=False,
-    )
+    _LITELLM_HANDLER_CLASS = _BitfrostLiteLLMHandler
+    return _BitfrostLiteLLMHandler
 
 
 def _emit_litellm_span(
