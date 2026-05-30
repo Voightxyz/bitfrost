@@ -92,6 +92,23 @@ def render_event(
     return _colorize(columns, plain)
 
 
+def build_columns(
+    event: Mapping[str, Any],
+    *,
+    now: _dt.datetime | None = None,
+) -> dict[str, str]:
+    """Public: extract the formatted display columns for one event.
+
+    Shared by the console renderer (assembles them into a line) and the
+    TUI (drops them into a DataTable row), so both surfaces format
+    time / agent / model / tokens / duration / outcome / cost
+    identically. Keys: ``time``, ``agent``, ``model``, ``tokens``,
+    ``duration``, ``outcome``, ``marker``, ``cost``.
+    """
+
+    return _build_columns(event, now=now)
+
+
 def _build_columns(
     event: Mapping[str, Any],
     *,
@@ -301,4 +318,4 @@ class _NullIO:
         return True  # force colour codes in the export
 
 
-__all__ = ["is_rich_available", "render_event"]
+__all__ = ["build_columns", "is_rich_available", "render_event"]

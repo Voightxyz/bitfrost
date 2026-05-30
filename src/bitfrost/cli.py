@@ -132,6 +132,42 @@ def replay(
 
 
 @app.command()
+def tui(
+    source: Path = typer.Argument(..., help="Capture file to explore (.jsonl or .db)."),
+    db: bool = typer.Option(False, "--db", help="Force SQLite format."),
+    jsonl: bool = typer.Option(False, "--jsonl", help="Force JSON Lines format."),
+) -> None:
+    """Open the full-screen interactive dashboard for a capture.
+
+    A keyboard-navigable event table with a live-updating detail panel —
+    the in-terminal counterpart to ``bitfrost serve``. Requires the
+    ``[tui]`` extra (``pip install 'bitfrost[tui]'``).
+    """
+
+    if db and jsonl:
+        typer.secho(
+            "error: pass only one of --db / --jsonl, not both.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(2)
+    if not source.exists():
+        typer.secho(f"error: no such file: {source}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2)
+    fmt: str | None = "db" if db else "jsonl" if jsonl else None
+    from bitfrost.tui import run_tui
+
+    try:
+        run_tui(source, fmt=fmt)
+    except ImportError as err:
+        typer.secho(f"error: {err}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from err
+    except ValueError as err:
+        typer.secho(f"error: {err}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from err
+
+
+@app.command()
 def query(
     db_path: Path = typer.Argument(..., help="SQLite capture DB."),
     sql: str = typer.Argument(..., help="Read-only SQL to run."),
