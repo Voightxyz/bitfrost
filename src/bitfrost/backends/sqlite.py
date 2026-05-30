@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS events (
     input_tokens INTEGER,
     output_tokens INTEGER,
     tool_executed TEXT,
+    input TEXT,
     metadata TEXT NOT NULL
 );
 """
@@ -68,8 +69,8 @@ _INDEXES = [
 _INSERT_SQL = (
     "INSERT OR REPLACE INTO events "
     "(id, agent_id, session_id, timestamp, event_type, model, duration_ms, "
-    "outcome, input_tokens, output_tokens, tool_executed, metadata) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "outcome, input_tokens, output_tokens, tool_executed, input, metadata) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 
 
@@ -234,6 +235,14 @@ def _event_to_row(event: dict[str, Any]) -> tuple[Any, ...]:
     input_tokens = _coerce_int(tokens.get("input"))
     output_tokens = _coerce_int(tokens.get("output"))
 
+    # Preserve the (already privacy-filtered) prompt input so SQLite
+    # captures match JSONL fidelity — the TUI / replay detail panels
+    # show the prompt, not just the response.
+    input_obj = event.get("input")
+    input_json = (
+        json.dumps(input_obj, separators=(",", ":"), default=str) if input_obj is not None else None
+    )
+
     return (
         str(event_id),
         str(agent_id),
@@ -246,6 +255,7 @@ def _event_to_row(event: dict[str, Any]) -> tuple[Any, ...]:
         input_tokens,
         output_tokens,
         str(tool_executed) if tool_executed else None,
+        input_json,
         json.dumps(metadata, separators=(",", ":"), default=str),
     )
 

@@ -62,8 +62,11 @@ serve = [
     "uvicorn>=0.30",
     "rich>=13.0",
 ]
+tui = [
+    "textual>=0.50",
+]
 all = [
-    "bitfrost[http,rich,cli,serve]",
+    "bitfrost[http,rich,cli,serve,tui]",
 ]
 dev = [
     "pytest>=8.0",
@@ -92,6 +95,7 @@ test = [
     "litellm>=1.40",
     "smolagents>=1.0",
     "openinference-instrumentation-smolagents>=0.1",
+    "textual>=0.50",
 ]
 
 [project.urls]

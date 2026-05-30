@@ -23,6 +23,7 @@ URI so a fat-fingered ``DROP TABLE`` can't damage the user's capture.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
 from pathlib import Path
@@ -103,7 +104,7 @@ class SQLiteReader:
         try:
             cursor = conn.execute(
                 "SELECT rowid, agent_id, session_id, timestamp, event_type, "
-                "model, duration_ms, outcome, tool_executed, metadata "
+                "model, duration_ms, outcome, tool_executed, input, metadata "
                 "FROM events ORDER BY rowid"
             )
             return [_row_to_event(row) for row in cursor.fetchall()]
@@ -124,7 +125,7 @@ class SQLiteReader:
         try:
             cursor = conn.execute(
                 "SELECT rowid, agent_id, session_id, timestamp, event_type, "
-                "model, duration_ms, outcome, tool_executed, metadata "
+                "model, duration_ms, outcome, tool_executed, input, metadata "
                 "FROM events WHERE rowid > ? ORDER BY rowid",
                 (marker,),
             )
@@ -185,10 +186,11 @@ def _row_to_event(row: tuple[Any, ...]) -> dict[str, Any]:
 
     Column order matches the SELECT in :meth:`SQLiteReader.read_all`:
     ``(rowid, agent_id, session_id, timestamp, event_type, model,
-    duration_ms, outcome, tool_executed, metadata)``.
+    duration_ms, outcome, tool_executed, input, metadata)``.
 
     ``metadata`` already carries ``tokens`` / ``provider`` / ``sessionId``
-    so the reconstructed dict renders identically to a live event.
+    and ``input`` carries the (privacy-filtered) prompt, so the
+    reconstructed dict renders identically to a live event.
     """
 
     (
@@ -201,6 +203,7 @@ def _row_to_event(row: tuple[Any, ...]) -> dict[str, Any]:
         duration_ms,
         outcome,
         tool_executed,
+        input_raw,
         metadata_raw,
     ) = row
     try:
@@ -221,6 +224,9 @@ def _row_to_event(row: tuple[Any, ...]) -> dict[str, Any]:
     }
     if tool_executed:
         event["toolExecuted"] = tool_executed
+    if input_raw:
+        with contextlib.suppress(json.JSONDecodeError, ValueError, TypeError):
+            event["input"] = json.loads(input_raw)
     return event
 
 
