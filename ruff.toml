@@ -21,6 +21,9 @@ ignore = [
 
 [lint.per-file-ignores]
 "tests/**/*.py" = ["N802", "N803", "N806"]  # allow non-snake_case in tests
+# typer's canonical API puts Argument/Option calls in parameter defaults;
+# B008 (no function calls in defaults) is a false positive for that idiom.
+"src/bitfrost/cli.py" = ["B008"]
 
 [format]
 quote-style = "double"
