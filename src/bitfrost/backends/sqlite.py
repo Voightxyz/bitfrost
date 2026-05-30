@@ -164,6 +164,22 @@ class SQLiteBackend:
         del timeout_millis
         return True
 
+    def __del__(self) -> None:
+        """Defensive close if the caller never invoked :meth:`shutdown`.
+
+        Without this, a backend that goes out of scope leaks its sqlite
+        connection. Python 3.13 raises a ``ResourceWarning`` when an
+        unclosed connection is finalised; closing here pre-empts that so
+        a forgetful caller doesn't pay for it. Wrapped in broad suppress
+        because ``__del__`` can run during interpreter teardown when
+        module globals (sqlite3) may already be gone.
+        """
+
+        conn = getattr(self, "_conn", None)
+        if conn is not None:
+            with suppress(Exception):
+                conn.close()
+
     # -------------------------------------------------------------------
     # Internals
     # -------------------------------------------------------------------
