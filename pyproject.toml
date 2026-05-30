@@ -60,6 +60,7 @@ cli = [
 serve = [
     "starlette>=0.40",
     "uvicorn>=0.30",
+    "sse-starlette>=2.0",
     "rich>=13.0",
 ]
 tui = [
@@ -135,6 +136,12 @@ addopts = [
 filterwarnings = [
     "error",
     "ignore::DeprecationWarning",
+    # starlette 1.2+ emits a deprecation when its TestClient is used with
+    # httpx (it plans to switch to httpx2). httpx still works and the
+    # TestClient is test-only, so we silence it rather than pin starlette
+    # or add an unstable dep. Matched by message so the filter needs no
+    # importable warning class (works even in a serve-less install).
+    "ignore:Using `httpx` with `starlette.testclient`:",
 ]
 
 [tool.coverage.run]

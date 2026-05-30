@@ -168,6 +168,49 @@ def tui(
 
 
 @app.command()
+def serve(
+    db_path: Path = typer.Argument(..., help="SQLite capture DB to serve."),
+    port: int = typer.Option(8080, "--port", "-p", help="Port to bind.", min=1, max=65535),
+    host: str = typer.Option(
+        "127.0.0.1", "--host", help="Host to bind. Defaults to localhost only."
+    ),
+) -> None:
+    """Serve a local web dashboard for a SQLite capture.
+
+    Opens an HTTP server (default http://127.0.0.1:8080) with a live,
+    filterable dashboard of captured LLM telemetry — charts, per-span
+    detail, and a real-time feed. SQLite-only (the dashboard needs SQL
+    aggregation); use ``--db`` captures from ``SQLiteBackend``. Requires
+    the ``[serve]`` extra (``pip install 'bitfrost[serve]'``). Ctrl-C to
+    stop.
+    """
+
+    if not db_path.exists():
+        typer.secho(f"error: no such file: {db_path}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2)
+    if db_path.suffix.lower() in (".jsonl", ".ndjson"):
+        typer.secho(
+            "error: bitfrost serve is SQLite-only. Capture with SQLiteBackend, "
+            "or use `bitfrost watch`/`replay` for JSONL.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(2)
+
+    from bitfrost.serve import run_server
+
+    typer.secho(
+        f"serving {db_path} at http://{host}:{port} — Ctrl-C to stop",
+        fg=typer.colors.CYAN,
+    )
+    try:
+        run_server(db_path, host=host, port=port)
+    except ImportError as err:
+        typer.secho(f"error: {err}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from err
+
+
+@app.command()
 def query(
     db_path: Path = typer.Argument(..., help="SQLite capture DB."),
     sql: str = typer.Argument(..., help="Read-only SQL to run."),
