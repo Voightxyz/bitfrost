@@ -55,7 +55,7 @@ def _make_event(**overrides: Any) -> dict[str, Any]:
 
 def test_init_creates_events_table_and_indexes(tmp_path: Path) -> None:
     db_path = tmp_path / "test.db"
-    SQLiteBackend(db_path)
+    SQLiteBackend(db_path).shutdown()
 
     conn = sqlite3.connect(str(db_path))
     tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
@@ -80,7 +80,7 @@ def test_init_activates_wal_mode(tmp_path: Path) -> None:
     """
 
     db_path = tmp_path / "wal.db"
-    SQLiteBackend(db_path)
+    SQLiteBackend(db_path).shutdown()
 
     conn = sqlite3.connect(str(db_path))
     mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
@@ -93,7 +93,7 @@ def test_init_auto_creates_parent_directory(tmp_path: Path) -> None:
 
     nested = tmp_path / "deep" / "nested" / "events.db"
     assert not nested.parent.exists()
-    SQLiteBackend(nested)
+    SQLiteBackend(nested).shutdown()
     assert nested.exists()
 
 
