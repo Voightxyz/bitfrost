@@ -60,8 +60,7 @@ CREATE TABLE IF NOT EXISTS events (
 """
 
 _INDEXES = [
-    "CREATE INDEX IF NOT EXISTS idx_events_agent_timestamp "
-    "ON events(agent_id, timestamp DESC);",
+    "CREATE INDEX IF NOT EXISTS idx_events_agent_timestamp ON events(agent_id, timestamp DESC);",
     "CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);",
     "CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);",
 ]
@@ -181,9 +180,7 @@ class SQLiteBackend:
 
         cutoff_ms = int((time.time() - retention_days * 86400) * 1000)
         try:
-            self._conn.execute(
-                "DELETE FROM events WHERE timestamp < ?", (cutoff_ms,)
-            )
+            self._conn.execute("DELETE FROM events WHERE timestamp < ?", (cutoff_ms,))
         except sqlite3.Error as err:
             self._route_error(err)
 
@@ -237,9 +234,7 @@ def _event_to_row(event: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
-def _resolve_timestamp_ms(
-    event: dict[str, Any], metadata: dict[str, Any]
-) -> int:
+def _resolve_timestamp_ms(event: dict[str, Any], metadata: dict[str, Any]) -> int:
     """Return a millisecond-epoch timestamp from whatever the event carries.
 
     Priority: ``event['timestamp']`` (ms or ISO) → ``metadata['timestamp']``

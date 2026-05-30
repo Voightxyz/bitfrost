@@ -22,6 +22,16 @@ from opentelemetry.sdk.trace import TracerProvider
 
 from bitfrost import instrument as _instrument_module
 
+# These tests patch the openai / anthropic instrumentors by dotted path.
+# ``opentelemetry.instrumentation`` is a namespace package, so the
+# submodules only become attributes once imported — without this,
+# ``mock.patch("opentelemetry.instrumentation.anthropic.…")`` raises
+# AttributeError in a clean environment. importorskip both loads the
+# submodule (fixing the patch target) and gracefully skips this module
+# when the optional ``[test]`` extras aren't installed.
+pytest.importorskip("opentelemetry.instrumentation.openai")
+pytest.importorskip("opentelemetry.instrumentation.anthropic")
+
 
 @pytest.fixture(autouse=True)
 def _reset_otel_state() -> Any:
@@ -83,9 +93,10 @@ def test_two_helpers_share_one_provider() -> None:
 
     from bitfrost.backends.console import ConsoleBackend
 
-    with patch("opentelemetry.instrumentation.openai.OpenAIInstrumentor") as mock_openai, patch(
-        "opentelemetry.instrumentation.anthropic.AnthropicInstrumentor"
-    ) as mock_anthropic:
+    with (
+        patch("opentelemetry.instrumentation.openai.OpenAIInstrumentor") as mock_openai,
+        patch("opentelemetry.instrumentation.anthropic.AnthropicInstrumentor") as mock_anthropic,
+    ):
         _instrument_module.instrument_openai(backend=ConsoleBackend())
         first = trace.get_tracer_provider()
         _instrument_module.instrument_anthropic(backend=ConsoleBackend())
@@ -137,11 +148,14 @@ def test_no_warning_when_target_library_not_yet_imported() -> None:
 def test_instrument_auto_returns_only_libraries_actually_present() -> None:
     """Quietly skip libraries whose pkg isn't installed."""
 
-    with patch.object(
-        _instrument_module,
-        "_library_importable",
-        side_effect=lambda name: name == "openai",
-    ), patch("opentelemetry.instrumentation.openai.OpenAIInstrumentor"):
+    with (
+        patch.object(
+            _instrument_module,
+            "_library_importable",
+            side_effect=lambda name: name == "openai",
+        ),
+        patch("opentelemetry.instrumentation.openai.OpenAIInstrumentor"),
+    ):
         installed = _instrument_module.instrument_auto()
     assert installed == ("openai",)
 
@@ -162,16 +176,12 @@ def test_instrument_auto_calls_helpers_in_correct_order() -> None:
 
         return _helper
 
-    with patch.object(
-        _instrument_module, "_library_importable", return_value=True
-    ), patch.object(
-        _instrument_module, "instrument_openai", make_helper("openai")
-    ), patch.object(
-        _instrument_module, "instrument_anthropic", make_helper("anthropic")
-    ), patch.object(
-        _instrument_module, "instrument_litellm", make_helper("litellm")
-    ), patch.object(
-        _instrument_module, "instrument_smolagents", make_helper("smolagents")
+    with (
+        patch.object(_instrument_module, "_library_importable", return_value=True),
+        patch.object(_instrument_module, "instrument_openai", make_helper("openai")),
+        patch.object(_instrument_module, "instrument_anthropic", make_helper("anthropic")),
+        patch.object(_instrument_module, "instrument_litellm", make_helper("litellm")),
+        patch.object(_instrument_module, "instrument_smolagents", make_helper("smolagents")),
     ):
         _instrument_module.instrument_auto()
 
@@ -189,14 +199,12 @@ def test_instrument_auto_swallows_missing_companion_instrumentor() -> None:
     def raising_helper(**_kw: Any) -> None:
         raise ImportError("companion instrumentor missing")
 
-    with patch.object(
-        _instrument_module, "_library_importable", return_value=True
-    ), patch.object(_instrument_module, "instrument_openai", raising_helper), patch.object(
-        _instrument_module, "instrument_anthropic", raising_helper
-    ), patch.object(
-        _instrument_module, "instrument_litellm", raising_helper
-    ), patch.object(
-        _instrument_module, "instrument_smolagents", raising_helper
+    with (
+        patch.object(_instrument_module, "_library_importable", return_value=True),
+        patch.object(_instrument_module, "instrument_openai", raising_helper),
+        patch.object(_instrument_module, "instrument_anthropic", raising_helper),
+        patch.object(_instrument_module, "instrument_litellm", raising_helper),
+        patch.object(_instrument_module, "instrument_smolagents", raising_helper),
     ):
         installed = _instrument_module.instrument_auto()
     assert installed == ()

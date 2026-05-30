@@ -58,12 +58,9 @@ def test_init_creates_events_table_and_indexes(tmp_path: Path) -> None:
     SQLiteBackend(db_path)
 
     conn = sqlite3.connect(str(db_path))
-    tables = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'"
-    ).fetchall()
+    tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     indexes = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='index' "
-        "AND name NOT LIKE 'sqlite_autoindex%'"
+        "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_autoindex%'"
     ).fetchall()
     conn.close()
 
@@ -167,9 +164,7 @@ def test_send_json_extract_works_on_metadata(tmp_path: Path) -> None:
     backend.shutdown()
 
     conn = sqlite3.connect(str(db_path))
-    provider = conn.execute(
-        "SELECT json_extract(metadata, '$.provider') FROM events"
-    ).fetchone()[0]
+    provider = conn.execute("SELECT json_extract(metadata, '$.provider') FROM events").fetchone()[0]
     conn.close()
     assert provider == "openai"
 

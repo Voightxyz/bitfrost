@@ -77,9 +77,7 @@ GEN_AI_OUTPUT_MESSAGES = "gen_ai.output.messages"
 # Renamed (extra dot): gen_ai.usage.cache_read_input_tokens
 #                    → gen_ai.usage.cache_read.input_tokens
 GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_DOTTED = "gen_ai.usage.cache_read.input_tokens"
-GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_DOTTED = (
-    "gen_ai.usage.cache_creation.input_tokens"
-)
+GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_DOTTED = "gen_ai.usage.cache_creation.input_tokens"
 
 
 # ---------------------------------------------------------------------------

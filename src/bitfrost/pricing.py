@@ -117,9 +117,7 @@ def compute_cost(
     if output_tokens > 0:
         cost += (Decimal(output_tokens) * output_rate_dec) / _ONE_MILLION
     if cache_read > 0:
-        cost += (
-            Decimal(cache_read) * input_rate_dec * _CACHE_READ_MULTIPLIER
-        ) / _ONE_MILLION
+        cost += (Decimal(cache_read) * input_rate_dec * _CACHE_READ_MULTIPLIER) / _ONE_MILLION
     if cache_creation > 0:
         cost += (
             Decimal(cache_creation) * input_rate_dec * _CACHE_CREATION_MULTIPLIER

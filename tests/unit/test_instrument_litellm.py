@@ -18,7 +18,15 @@ import datetime as _dt
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
+
 from bitfrost import instrument as _mod
+
+# The LiteLLM adapter subclasses litellm's CustomLogger and several tests
+# import litellm directly. Skip the module gracefully when the optional
+# ``[test]`` extras aren't installed (CI installs them; a bare
+# ``pip install bitfrost[dev]`` for docs work does not).
+pytest.importorskip("litellm")
 
 # ---------------------------------------------------------------------------
 # Fakes mirroring LiteLLM's callback shapes
@@ -250,9 +258,7 @@ def test_handler_log_success_event_delegates_to_emit(monkeypatch: Any) -> None:
 
 def test_handler_log_failure_event_delegates_with_success_false(monkeypatch: Any) -> None:
     captured: dict[str, Any] = {}
-    monkeypatch.setattr(
-        _mod, "_emit_litellm_span", lambda **kw: captured.update(kw)
-    )
+    monkeypatch.setattr(_mod, "_emit_litellm_span", lambda **kw: captured.update(kw))
     handler = _mod._get_litellm_handler_class()(MagicMock())
     start, end = _times()
     handler.log_failure_event(_kwargs(), _FakeResponse(), start, end)
@@ -275,9 +281,7 @@ def test_instrument_litellm_registers_handler_in_callbacks() -> None:
     from bitfrost.backends.console import ConsoleBackend
 
     _mod.instrument_litellm(backend=ConsoleBackend(), agent="t")
-    handlers = [
-        c for c in litellm.callbacks if getattr(c, "_is_bitfrost_handler", False)
-    ]
+    handlers = [c for c in litellm.callbacks if getattr(c, "_is_bitfrost_handler", False)]
     assert len(handlers) == 1
 
 
@@ -301,7 +305,5 @@ def test_instrument_litellm_does_not_double_register_on_repeat() -> None:
     backend = ConsoleBackend()
     _mod.instrument_litellm(backend=backend, agent="t")
     _mod.instrument_litellm(backend=backend, agent="t")
-    handlers = [
-        c for c in litellm.callbacks if getattr(c, "_is_bitfrost_handler", False)
-    ]
+    handlers = [c for c in litellm.callbacks if getattr(c, "_is_bitfrost_handler", False)]
     assert len(handlers) == 1
