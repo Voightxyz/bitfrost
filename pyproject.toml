@@ -73,6 +73,26 @@ dev = [
     "build>=1.2",
     "twine>=5.0",
 ]
+# Integration libraries the test suite + mypy need present. Bitfrost
+# imports these lazily (they're the user's deps, not ours), but the
+# unit tests patch their instrumentors and the LiteLLM adapter
+# subclasses litellm's CustomLogger — so CI must install them for the
+# suite to run and for mypy to see real types instead of Any. Kept in a
+# dedicated group so a plain `pip install bitfrost[dev]` for docs/lint
+# work doesn't drag in litellm + smolagents.
+test = [
+    # The instrumentation packages import the underlying SDK at module
+    # load (the openai/anthropic instrumentors `import openai` /
+    # `import anthropic`), so the SDKs themselves must be present for the
+    # instrumentor submodules to import at all.
+    "openai>=1.40",
+    "anthropic>=0.40",
+    "opentelemetry-instrumentation-openai>=0.30",
+    "opentelemetry-instrumentation-anthropic>=0.30",
+    "litellm>=1.40",
+    "smolagents>=1.0",
+    "openinference-instrumentation-smolagents>=0.1",
+]
 
 [project.urls]
 Homepage = "https://voight.xyz"

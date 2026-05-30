@@ -540,9 +540,7 @@ def _emit_litellm_span(
         if choices:
             finish = getattr(choices[0], "finish_reason", None)
             if finish:
-                span.set_attribute(
-                    "gen_ai.response.finish_reasons", [str(finish)]
-                )
+                span.set_attribute("gen_ai.response.finish_reasons", [str(finish)])
 
         if not success:
             span.set_status(Status(StatusCode.ERROR))

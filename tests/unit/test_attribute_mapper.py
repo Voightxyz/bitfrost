@@ -650,9 +650,7 @@ def test_input_messages_falls_back_to_v127_indexed_when_blob_missing() -> None:
         )
     )
     assert result is not None
-    assert result["input"]["messages"] == [
-        {"role": "user", "content": "Indexed legacy hello"}
-    ]
+    assert result["input"]["messages"] == [{"role": "user", "content": "Indexed legacy hello"}]
 
 
 def test_malformed_messages_json_blob_falls_back_to_indexed_walk() -> None:
