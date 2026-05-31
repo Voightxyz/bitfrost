@@ -197,8 +197,10 @@ def serve(
         )
         raise typer.Exit(2)
 
+    from bitfrost._brand import banner
     from bitfrost.serve import run_server
 
+    typer.secho(banner(), fg=typer.colors.CYAN)
     typer.secho(
         f"serving {db_path} at http://{host}:{port} — Ctrl-C to stop",
         fg=typer.colors.CYAN,

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>bitfrost · dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <!-- All assets are vendored locally; the dashboard runs fully offline. -->
+    <link rel="stylesheet" href="styles.css" />
+    <script src="chart.min.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 64 30" role="img" aria-label="bitfrost">
+          <defs>
+            <linearGradient id="lk-metal-g" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#f6f6fb" />
+              <stop offset="0.28" stop-color="#b9bac6" />
+              <stop offset="0.5" stop-color="#7c7d8a" />
+              <stop offset="0.72" stop-color="#c7c8d2" />
+              <stop offset="1" stop-color="#8a8b97" />
+            </linearGradient>
+            <linearGradient id="lk-metal-g-irid" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#8b7bf0" />
+              <stop offset="0.35" stop-color="#46c585" />
+              <stop offset="0.65" stop-color="#eabf4e" />
+              <stop offset="1" stop-color="#ef5a6a" />
+            </linearGradient>
+          </defs>
+          <path d="M9 25 A23 14.72 0 0 1 55 25" fill="none" stroke="url(#lk-metal-g)" stroke-width="6.5" />
+          <path d="M13.03 25 A18.97 12.14 0 0 1 50.97 25" fill="none" stroke="url(#lk-metal-g-irid)" stroke-width="1.1" opacity="0.85" />
+        </svg>
+        <div class="brand-text">
+          <div class="brand-line">
+            <span class="brand-name">bitfrost</span>
+          </div>
+          <a class="brand-by" href="https://voight.xyz" target="_blank" rel="noopener">by voight.xyz</a>
+        </div>
+      </div>
+      <div class="filters" id="filters">
+        <select id="f-agent" class="filter" title="Agent"><option value="">all agents</option></select>
+        <select id="f-model" class="filter" title="Model"><option value="">all models</option></select>
+        <select id="f-provider" class="filter" title="Provider"><option value="">all providers</option></select>
+        <select id="f-outcome" class="filter" title="Outcome">
+          <option value="">all outcomes</option>
+          <option value="success">success</option>
+          <option value="failed">failed</option>
+          <option value="pending">pending</option>
+        </select>
+        <select id="f-since" class="filter" title="Time range">
+          <option value="">all time</option>
+          <option value="60">last hour</option>
+          <option value="1440">last 24h</option>
+          <option value="10080">last 7d</option>
+        </select>
+      </div>
+      <a
+        class="gh-link"
+        href="https://github.com/Voightxyz/bitfrost"
+        target="_blank"
+        rel="noopener"
+        title="View bitfrost on GitHub"
+        aria-label="View bitfrost on GitHub"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"
+          />
+        </svg>
+      </a>
+    </header>
+
+    <main>
+      <section class="tiles" id="tiles">
+        <div class="tile"><div class="tile-label">calls</div><div class="tile-value" id="t-calls">—</div></div>
+        <div class="tile"><div class="tile-label">est. cost</div><div class="tile-value" id="t-cost">—</div></div>
+        <div class="tile"><div class="tile-label">tokens (in / out)</div><div class="tile-value" id="t-tokens">—</div></div>
+        <div class="tile"><div class="tile-label">error rate</div><div class="tile-value" id="t-errors">—</div></div>
+        <div class="tile"><div class="tile-label">latency p50 / p95</div><div class="tile-value" id="t-latency">—</div></div>
+      </section>
+
+      <section class="charts">
+        <div class="card chart-wide">
+          <div class="card-title">cost over time</div>
+          <div class="canvas-wrap"><canvas id="chart-cost"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">calls per model</div>
+          <div class="canvas-wrap"><canvas id="chart-models"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">providers</div>
+          <div class="canvas-wrap"><canvas id="chart-providers"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">outcomes</div>
+          <div class="canvas-wrap"><canvas id="chart-outcomes"></canvas></div>
+        </div>
+      </section>
+
+      <section class="card spans-card">
+        <div class="card-title">
+          spans <span class="muted" id="spans-count"></span>
+        </div>
+        <div class="table-wrap">
+          <table class="spans">
+            <thead>
+              <tr>
+                <th>time</th><th>agent</th><th>model</th><th>provider</th>
+                <th class="num">tokens</th><th class="num">dur</th><th>status</th><th class="num">cost</th>
+              </tr>
+            </thead>
+            <tbody id="spans-body"></tbody>
+          </table>
+          <div class="empty" id="empty" hidden>
+            <div class="empty-title">no events captured yet</div>
+            <div class="empty-sub">point an exporter at this capture, or run a smoke test, and events appear here live.</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Span detail drawer -->
+    <aside class="drawer" id="drawer" hidden>
+      <div class="drawer-head">
+        <span class="drawer-title">span detail</span>
+        <button class="drawer-close" id="drawer-close" title="Close">✕</button>
+      </div>
+      <div class="drawer-body" id="drawer-body"></div>
+    </aside>
+    <div class="drawer-scrim" id="drawer-scrim" hidden></div>
+  </body>
+</html>

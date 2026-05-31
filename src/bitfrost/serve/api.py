@@ -132,6 +132,23 @@ class SpanStore:
                 f"COUNT(*) AS calls FROM events{where} GROUP BY provider ORDER BY calls DESC",
                 params,
             ).fetchall()
+            # Per-(day, model) token sums so cost-over-time can be computed in
+            # Python (cost depends on the model's rate, which SQL can't price).
+            series_rows = conn.execute(
+                "SELECT date(timestamp / 1000, 'unixepoch') AS day, model, "
+                "COUNT(*) AS calls, "
+                "COALESCE(SUM(input_tokens), 0) AS input_tokens, "
+                "COALESCE(SUM(output_tokens), 0) AS output_tokens, "
+                "COALESCE(SUM(CAST(json_extract(metadata, '$.tokens.cache_read') "
+                "AS INTEGER)), 0) AS cache_read, "
+                "COALESCE(SUM(CAST(json_extract(metadata, '$.tokens.cache_creation') "
+                "AS INTEGER)), 0) AS cache_creation "
+                f"FROM events{where} GROUP BY day, model ORDER BY day",
+                params,
+            ).fetchall()
+            duration_rows = conn.execute(
+                f"SELECT duration_ms FROM events{where}", params
+            ).fetchall()
         finally:
             conn.close()
 
@@ -172,6 +189,27 @@ class SpanStore:
             for row in provider_rows
         ]
 
+        # Cost-over-time: fold per-(day, model) rows into one entry per day,
+        # pricing each model group and summing into the day's cost.
+        days: dict[str, dict[str, Any]] = {}
+        for row in series_rows:
+            day = row["day"] or "unknown"
+            bucket = days.setdefault(day, {"day": day, "calls": 0, "cost": 0.0})
+            bucket["calls"] += int(row["calls"])
+            cost = compute_cost(
+                row["model"] or "",
+                input_tokens=int(row["input_tokens"]),
+                output_tokens=int(row["output_tokens"]),
+                cache_read=int(row["cache_read"]),
+                cache_creation=int(row["cache_creation"]),
+            )
+            if cost is not None:
+                bucket["cost"] += float(cost)
+        series = list(days.values())
+
+        durations = sorted(int(r[0]) for r in duration_rows if r[0] is not None)
+        latency = {"p50": _percentile(durations, 50), "p95": _percentile(durations, 95)}
+
         return {
             "totalCalls": total_calls,
             "totalCost": total_cost,
@@ -179,6 +217,8 @@ class SpanStore:
             "outcomes": outcomes,
             "models": models,
             "providers": providers,
+            "series": series,
+            "latency": latency,
         }
 
     def tail(self, marker: int) -> tuple[list[dict[str, Any]], int]:
@@ -282,6 +322,21 @@ def _coerce_int(value: Any) -> int:
     if isinstance(value, (int, float)):
         return int(value)
     return 0
+
+
+def _percentile(sorted_values: list[int], pct: float) -> int:
+    """Nearest-rank percentile of an already-sorted list (0 when empty).
+
+    SQLite has no percentile function, so latency p50/p95 are computed in
+    Python over the sorted ``duration_ms`` column. Nearest-rank is the
+    standard simple estimator and is exact enough for a local dashboard.
+    """
+
+    if not sorted_values:
+        return 0
+    idx = round((pct / 100) * (len(sorted_values) - 1))
+    idx = max(0, min(len(sorted_values) - 1, int(idx)))
+    return sorted_values[idx]
 
 
 def _build_where(

@@ -191,6 +191,25 @@ def test_stats_per_model_and_provider(client: TestClient) -> None:
     assert providers["anthropic"] == 1
 
 
+def test_stats_series_and_latency(client: TestClient) -> None:
+    stats = client.get("/api/stats").json()
+    # Cost-over-time series: one bucket per day, calls summed across models.
+    assert isinstance(stats["series"], list)
+    assert sum(b["calls"] for b in stats["series"]) == 4
+    assert all({"day", "calls", "cost"} <= set(b) for b in stats["series"])
+    # Latency percentiles present and ordered.
+    assert "p50" in stats["latency"] and "p95" in stats["latency"]
+    assert stats["latency"]["p95"] >= stats["latency"]["p50"] > 0
+
+
+def test_stats_empty_db_series_and_latency(tmp_path: Path) -> None:
+    path = tmp_path / "empty2.db"
+    _seed(path, [])
+    stats = TestClient(build_app(path)).get("/api/stats").json()
+    assert stats["series"] == []
+    assert stats["latency"] == {"p50": 0, "p95": 0}
+
+
 def test_stats_empty_db_returns_zeros(tmp_path: Path) -> None:
     path = tmp_path / "empty.db"
     _seed(path, [])
