@@ -71,8 +71,12 @@ def watch(
     ``tail -f`` for LLM telemetry. Press Ctrl-C to stop.
     """
 
+    from bitfrost._brand import banner
+
     reader = _resolve_reader(source, db, jsonl)
     colorize = not no_color
+    if colorize:
+        typer.secho(banner(), fg=typer.colors.CYAN)
     typer.secho(f"watching {source} (every {interval}s) — Ctrl-C to stop", fg=typer.colors.CYAN)
     marker = 0
     # Prime the marker to "now" so watch shows only NEW events, not the

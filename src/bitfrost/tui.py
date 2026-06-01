@@ -103,12 +103,20 @@ def _build_app_class() -> type:
     class BitfrostTUI(App[None]):
         """Full-screen interactive view of a Bitfrost capture."""
 
-        TITLE = "Bitfrost"
+        TITLE = "bitfrost"
+        SUB_TITLE = "by voight.xyz"
+        # Brand palette (mirrors bitfrost._brand.PALETTE) — replaces textual's
+        # default blue accent with Bitfrost's teal so the TUI, the web
+        # dashboard and the CLI read as the same product.
         CSS = """
+        Screen { background: #0c0e0d; }
+        Header { background: #14171a; color: #5eead4; }
         DataTable { height: 60%; }
+        DataTable > .datatable--cursor { background: #5eead4 30%; }
+        DataTable > .datatable--header { color: #8b9197; }
         #detail {
             height: 40%;
-            border: round $accent;
+            border: round #5eead4;
             padding: 0 1;
         }
         """
