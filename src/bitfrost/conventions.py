@@ -54,10 +54,8 @@ GEN_AI_COMPLETION_PREFIX = "gen_ai.completion."
 # Older libraries still emit the v1.27 names above.
 #
 # The mapper reads BOTH generations: v1.32 takes priority on a per-field
-# basis, then falls back to v1.27 so older spans still work end-to-end.
-# This is the same pattern Logfire / Phoenix / Langfuse / Braintrust use
-# — Bitfrost is OTel-spec-native, not pinned to one instrumentation
-# version.
+# basis, then falls back to v1.27 so older spans still work end-to-end —
+# Bitfrost is OTel-spec-native, not pinned to one instrumentation version.
 
 # Renamed: gen_ai.system → gen_ai.provider.name
 GEN_AI_PROVIDER_NAME = "gen_ai.provider.name"

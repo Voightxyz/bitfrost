@@ -1,4 +1,4 @@
-"""Auto-instrumentation helpers — the drop-in Logfire-style API.
+"""Auto-instrumentation helpers — the drop-in, one-line API.
 
 Each helper does the OTel boilerplate users would otherwise write by
 hand: build (or reuse) a ``TracerProvider``, attach a
@@ -166,8 +166,8 @@ def instrument_litellm(
     handler = handler_cls(tracer)
 
     # litellm.callbacks is a list of handlers — append rather than
-    # replace so users with other callbacks (Langfuse, Helicone) keep
-    # them. Dedup by the ``_is_bitfrost_handler`` marker attribute, NOT
+    # replace so users with other callbacks keep them. Dedup by the
+    # ``_is_bitfrost_handler`` marker attribute, NOT
     # isinstance: the handler class is built lazily inside a factory so
     # there's no stable module-level class object to isinstance against.
     existing = getattr(litellm, "callbacks", None)
@@ -263,9 +263,8 @@ def quickstart(
 ) -> Sequence[str]:
     """One-line setup: default ConsoleBackend + auto-instrument everything.
 
-    The Logfire ``logfire.configure()`` equivalent. Drop this at the
-    top of a Python entrypoint and any installed LLM library starts
-    streaming to the terminal::
+    Drop this at the top of a Python entrypoint and any installed LLM
+    library starts streaming to the terminal::
 
         import bitfrost
         bitfrost.quickstart(agent="my-app")
