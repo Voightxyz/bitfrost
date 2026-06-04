@@ -28,10 +28,25 @@ from bitfrost.console_renderer import render_event
 
 app = typer.Typer(
     name="bitfrost",
-    help="Inspect, replay, and query captured LLM telemetry.",
-    no_args_is_help=True,
     add_completion=False,
 )
+
+
+@app.callback(invoke_without_command=True)
+def _root(ctx: typer.Context) -> None:
+    """Inspect, replay, and query captured LLM telemetry."""
+
+    # Bare ``bitfrost`` (no subcommand) shows the welcome splash, then a
+    # hint. Subcommands skip it here (watch/serve render their own at
+    # startup; one-shot commands stay quiet).
+    if ctx.invoked_subcommand is None:
+        from bitfrost._brand import render_splash
+
+        render_splash(full=True)
+        typer.echo()
+        typer.secho(
+            "  run a command — e.g. `bitfrost serve capture.db`", fg=typer.colors.BRIGHT_BLACK
+        )
 
 
 def _resolve_reader(
@@ -71,12 +86,12 @@ def watch(
     ``tail -f`` for LLM telemetry. Press Ctrl-C to stop.
     """
 
-    from bitfrost._brand import banner
+    from bitfrost._brand import render_splash
 
     reader = _resolve_reader(source, db, jsonl)
     colorize = not no_color
     if colorize:
-        typer.secho(banner(), fg=typer.colors.CYAN)
+        render_splash(full=False)
     typer.secho(f"watching {source} (every {interval}s) — Ctrl-C to stop", fg=typer.colors.CYAN)
     marker = 0
     # Prime the marker to "now" so watch shows only NEW events, not the
@@ -201,10 +216,10 @@ def serve(
         )
         raise typer.Exit(2)
 
-    from bitfrost._brand import banner
+    from bitfrost._brand import render_splash
     from bitfrost.serve import run_server
 
-    typer.secho(banner(), fg=typer.colors.CYAN)
+    render_splash(full=False)
     typer.secho(
         f"serving {db_path} at http://{host}:{port} — Ctrl-C to stop",
         fg=typer.colors.CYAN,
