@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/Voightxyz/bitfrost/main/assets/logo.svg" alt="bitfrost" height="56" />
+<img src="https://raw.githubusercontent.com/Voightxyz/bitfrost/main/assets/logo.png" alt="bitfrost" height="56" />
 
 # bitfrost
 
