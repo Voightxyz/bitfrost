@@ -121,6 +121,12 @@ bitfrost tui    capture.db        # full-screen interactive dashboard
 bitfrost serve  capture.db        # local web dashboard at http://127.0.0.1:8080
 ```
 
+<div align="center">
+  <img src="https://raw.githubusercontent.com/Voightxyz/bitfrost/main/assets/tui.png" alt="bitfrost tui — interactive terminal dashboard" width="100%" />
+  <br />
+  <em><code>bitfrost tui</code> — the same capture, navigable in your terminal. Prompts masked by default.</em>
+</div>
+
 ## Privacy
 
 Three levels, applied in-process before any event is sent:
