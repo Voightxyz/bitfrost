@@ -5,6 +5,24 @@ All notable changes to `bitfrost` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Events now carry the span's **OTel trace context** (`traceId`, `spanId`,
+  `parentSpanId`) as first-class fields, so a backend can reassemble each
+  request's span tree. Zeroed ids from a no-op tracer are never shipped.
+- Events now carry a **`timestamp`** taken from the span's own start time, so
+  batched or delayed sends keep an honest timeline instead of inheriting the
+  ingest arrival time.
+
+### Changed
+
+- `quickstart()` / `instrument_auto()` with **zero auto-detected libraries** now
+  still install the tracer provider (so manually created OpenTelemetry spans and
+  later instrumentations are captured) and emit a `UserWarning` saying so —
+  previously this case was a silent no-op: zero events, zero output.
+
 ## [0.1.0] — 2026-06-08
 
 First public release.

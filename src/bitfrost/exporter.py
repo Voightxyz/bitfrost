@@ -140,6 +140,17 @@ class BitfrostExporter(SpanExporter):
         metadata.setdefault("sessionId", self._session_id)
         stamped["metadata"] = metadata
 
+        # OTel trace context, first-class: traceId groups one request's spans
+        # into a tree, parentSpanId links it. Zero ids (no-op tracer) are
+        # skipped rather than shipped as meaningless zeros.
+        ctx = getattr(span, "context", None)
+        if ctx is not None and getattr(ctx, "trace_id", 0):
+            stamped["traceId"] = format(ctx.trace_id, "032x")
+            stamped["spanId"] = format(ctx.span_id, "016x")
+        parent = getattr(span, "parent", None)
+        if parent is not None and getattr(parent, "span_id", 0):
+            stamped["parentSpanId"] = format(parent.span_id, "016x")
+
         return apply_privacy(stamped, self._privacy)
 
     def _route_error(self, err: BaseException) -> None:

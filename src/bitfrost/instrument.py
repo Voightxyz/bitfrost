@@ -252,6 +252,26 @@ def instrument_auto(
             # openai but not opentelemetry-instrumentation-openai).
             # Quietly skip — instrument_auto is best-effort.
             continue
+    if not instrumented:
+        # No supported library detected. Still bootstrap the provider so
+        # manually-created spans (or third-party instrumentations added
+        # later in the process) flow to the backend instead of dying in
+        # the default no-op tracer — and say so, because "zero events,
+        # zero output" is the least debuggable failure mode there is.
+        _bootstrap_provider(
+            backend=backend,
+            agent=agent,
+            session_id=session_id,
+            privacy=privacy,
+            on_error=on_error,
+        )
+        warnings.warn(
+            "bitfrost: no supported LLM library was auto-detected "
+            "(looked for openai, anthropic, litellm, smolagents). "
+            "The tracer is installed, so manual OpenTelemetry spans and "
+            "later instrumentations will still be captured.",
+            stacklevel=3,
+        )
     return tuple(instrumented)
 
 

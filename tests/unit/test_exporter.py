@@ -295,3 +295,44 @@ def test_export_routes_per_span_errors_to_on_error_hook() -> None:
     exporter.export([span])
     assert len(errors) == 1
     assert isinstance(errors[0], ValueError)
+
+
+# ---------------------------------------------------------------------------
+# OTel trace context stamping
+# ---------------------------------------------------------------------------
+
+
+def test_trace_context_stamped_first_class() -> None:
+    backend = _FakeBackend()
+    exporter = BitfrostExporter(backend=backend, agent="a")
+    span = _make_span(attributes={"gen_ai.system": "openai"})
+    span.context = SimpleNamespace(trace_id=0xABC123, span_id=0xDEF456)
+    span.parent = SimpleNamespace(span_id=0x99)
+    exporter.export([span])
+    (event,) = backend.events
+    assert event["traceId"] == format(0xABC123, "032x")
+    assert event["spanId"] == format(0xDEF456, "016x")
+    assert event["parentSpanId"] == format(0x99, "016x")
+
+
+def test_trace_context_omitted_without_span_context() -> None:
+    backend = _FakeBackend()
+    exporter = BitfrostExporter(backend=backend, agent="a")
+    exporter.export([_make_span(attributes={"gen_ai.system": "openai"})])
+    (event,) = backend.events
+    assert "traceId" not in event
+    assert "spanId" not in event
+    assert "parentSpanId" not in event
+
+
+def test_zeroed_trace_context_not_shipped() -> None:
+    # A no-op tracer hands out all-zero ids — shipping them would group
+    # unrelated events into one fake trace.
+    backend = _FakeBackend()
+    exporter = BitfrostExporter(backend=backend, agent="a")
+    span = _make_span(attributes={"gen_ai.system": "openai"})
+    span.context = SimpleNamespace(trace_id=0, span_id=0)
+    span.parent = None
+    exporter.export([span])
+    (event,) = backend.events
+    assert "traceId" not in event

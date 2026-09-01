@@ -19,6 +19,8 @@ to the nearest millisecond using :func:`round`.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import json
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -133,6 +135,14 @@ def map_attributes(
         "durationMs": duration_ms,
         "metadata": metadata,
     }
+    if start_time_ns:
+        # The span's own start time, not the ingest arrival time — batched or
+        # delayed sends would otherwise land with a lying timeline.
+        event["timestamp"] = (
+            datetime.fromtimestamp(start_time_ns / 1e9, tz=timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
     if prompts:
         event["input"] = {"messages": prompts}
     if error_message is not None:

@@ -791,3 +791,32 @@ def test_maps_real_v132_anthropic_fixture_correctly(
     assert result["metadata"]["tokens"]["output"] == 5
     assert result["input"]["messages"][0]["role"] == "user"
     assert result["metadata"]["responseText"] == "pong"
+
+
+# ---------------------------------------------------------------------------
+# Span timestamp
+# ---------------------------------------------------------------------------
+
+
+def test_timestamp_is_span_start_time_iso_utc() -> None:
+    event = map_attributes(
+        span_name="openai.chat",
+        attributes={"gen_ai.system": "openai"},
+        start_time_ns=1_779_577_706_577_991_000,
+        end_time_ns=1_779_577_708_353_368_000,
+    )
+    assert event is not None
+    ts = event["timestamp"]
+    assert ts.endswith("Z")
+    assert ts.startswith("2026-")
+
+
+def test_timestamp_omitted_when_start_time_unknown() -> None:
+    event = map_attributes(
+        span_name="openai.chat",
+        attributes={"gen_ai.system": "openai"},
+        start_time_ns=0,
+        end_time_ns=0,
+    )
+    assert event is not None
+    assert "timestamp" not in event
